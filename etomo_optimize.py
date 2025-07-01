@@ -1,391 +1,358 @@
 #!/usr/bin/env python3
 #
 # Wrapper for batchtomo
-# 
-# Before proceeding:
-# - have all TS in their own directory (Warp default file structure)
-# - have a batch session established for one TS with desired settings, stopping at fine alignment - adoc will be used.
 #
-# This script will:
-# - copy the adoc from the examplar TS to all TS directories
-# - add all TS to batch com file
-# - run batchruntomo (up to fine alignment)
-# - high-residual and view removal
-# - edit aligncoms to ignore tilt angle offset
-# - re-run aligncom
-# - newstack for aligned stack (bin8)
-# - reconstruct with SIRTlike iterations (bin8)
+# This script is designed to be called by a pipeline manager. It iterates
+# through tomogram directories, identifies high-residual views and contours,
+# and re-runs alignment and reconstruction steps to optimize the output.
 #
-# JH 20230920
-# 
-# Add a manually input string to define the tomogram list 
-# SYC 241129
-# Fix a bug when early optimization jobs throw errors and prevent the following jobs from working
-# Support multiprocessing to speed up the optimization process
-# SYC 241211
-# Bug fixed when batchruntomo.log is not available
-# SYC 241218
-#
-# Refactor Note (June 2025):
-# This script has been integrated into the Warp_Pipeline_v2 framework.
-# It no longer relies on external templates. Instead, it dynamically generates
-# .adoc and .com file parameters based on settings in 'config.py' and
-# default values in 'default_adoc.py', providing a more flexible and
-# robust workflow.
+# Refactoring (July 2025):
+# - Encapsulated the logic for processing a single tomogram into an
+#   `eTomoOptimizer` class to improve structure, maintainability, and safety.
+# - Removed `os.chdir` calls, making path management more robust.
+# - Centralized configuration and hardcoded values into constants.
+# - Improved function/method names, typing, and documentation.
+# - Enhanced error handling and logging within the class structure.
+# - Made log file parsing robust by reading headers instead of using fixed column indices.
 
 import glob
 import os
 import pandas as pd
-import numpy as np
-import config as cfg
 import subprocess
 from multiprocessing import Pool
 import logging
 import sys
+from typing import List, Tuple, Iterator
 
-os.environ['NUMEXPR_MAX_THREADS'] = str(cfg.etomo_cpu_cores)
+# --- Configuration and Constants ---
+try:
+    import config as cfg
+    NUM_CPU_CORES = cfg.etomo_cpu_cores
+    TOMO_MATCH_STRING = cfg.tomo_match_string
+    FINAL_X_SIZE = cfg.final_x_size
+    FINAL_Y_SIZE = cfg.final_y_size
+    THICKNESS_PXL = cfg.thickness_pxl
+    FINAL_NEWSTACK_BIN = cfg.FINAL_NEWSTACK_BIN
+except ImportError:
+    logging.warning("Could not import config.py. Using fallback default values.")
+    NUM_CPU_CORES = 8
+    TOMO_MATCH_STRING = "L_"
+    FINAL_X_SIZE = 512
+    FINAL_Y_SIZE = 512
+    THICKNESS_PXL = 3000
+    FINAL_NEWSTACK_BIN = 8
 
-# thresholds for pruning views and contours
-view_thr_sd = 2
-contour_thr_sd = 2
+os.environ['NUMEXPR_MAX_THREADS'] = str(NUM_CPU_CORES)
 
+VIEW_THR_SD = 2
+CONTOUR_THR_SD = 2
+SIRT_ITERATIONS = 20
 
-####################################
-####### FUNCTION BLOCK BELOW #######
+class LogParsingError(Exception):
+    """Custom exception for errors during log file parsing."""
+    pass
 
-def list_tomo() -> list[str]:
-    """List all tomograms in the current directory."""
-    pattern = f'{cfg.tomo_match_string}*'
-    tomo_list = sorted(glob.glob(pattern))
-    if not tomo_list:
-        raise FileNotFoundError(f"No files found matching pattern: {pattern}")
-    return tomo_list
+# --- Helper Functions (File I/O) ---
 
-def submfg(file_name, logger) -> None:
-    """Submit a command file to etomo using submfg."""
-    logger.info(f"Starting Command {file_name} using etomo")
-    try:
-        result = subprocess.run(['submfg', file_name], check=True, capture_output=True, text=True)
-        logger.info(f"Command {file_name} ran successfully.")
-        logger.debug(result.stdout)
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Command {file_name} failed with return code {e.returncode}")
-        logger.error(e.stderr)
-        raise
+def read_align_log(path_to_align_log: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Reads an IMOD align log and separates it into DataFrames for views and contours."""
+    with open(path_to_align_log, 'r') as file:
+        lines = file.readlines()
 
-def makenewstcom(newstcom, newstcomout):
-    """Make new stack command with correct final size, using values from config."""
-    size_string = f"SizeToOutputInXandY\t{cfg.final_x_size},{cfg.final_y_size}\n"
+    def parse_section(lines_iterator: Iterator[str], expected_tokens: List[str]) -> pd.DataFrame:
+        """
+        Finds a section by matching the first few tokens of its header line,
+        making it robust against whitespace changes.
+        """
+        header = None
+        data_lines = []
+        
+        # Find the header line by matching tokens
+        for line in lines_iterator:
+            tokens = line.strip().split()
+            if len(tokens) >= len(expected_tokens) and all(
+                tokens[i] == expected_tokens[i] for i in range(len(expected_tokens))
+            ):
+                header = line.strip().replace('#', 'point_num').split()
+                break
+        
+        if not header:
+            raise LogParsingError(f"Header with starting tokens {expected_tokens} not found in log file.")
+            
+        # Collect data lines until a blank line is encountered
+        for line in lines_iterator:
+            if not line.strip():
+                break
+            data_lines.append(line.split())
+            
+        if not data_lines:
+            logging.warning(f"Found header for {expected_tokens} but no data rows followed.")
+            return pd.DataFrame(columns=header)
+            
+        df = pd.DataFrame(data_lines, columns=header)
+        
+        # Convert all columns to numeric, coercing errors to NaN
+        for col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        # Drop rows where key columns could not be parsed, as they are unusable
+        if 'resid-nm' in df.columns:
+            df.dropna(subset=['resid-nm'], inplace=True)
+        return df
+
+    # Use lists of tokens for robust header matching
+    view_df = parse_section(iter(lines), ['view', 'rotation', 'tilt'])
+    contour_df = parse_section(iter(lines), ['#', 'X', 'Y'])
     
-    with open(newstcom, 'r') as file:
-        data = file.readlines()
+    return view_df, contour_df
 
-    for i, line in enumerate(data):
-        if line.startswith('SizeToOutputInXandY'):
-            data[i] = size_string
-            break
-    
-    with open(newstcomout, 'w', encoding='utf-8') as file:
-        file.writelines(data)
 
-def make_clean_tiltcom(tiltcom_in, tiltcom_out, excludelist):
-    """Make tilt command to reconstruct the tomogram with SIRTlike iterations,
-    apply the correct thickness, and add an exclude list."""
-    SIRT_set = 'FakeSIRTiterations\t20\n'
-    thickness_set = f'THICKNESS\t{int(cfg.thickness_pxl/cfg.FINAL_NEWSTACK_BIN)}\n'
-    
-    with open(tiltcom_in, 'r') as file:
-        original_lines = file.readlines()
-
-    new_lines = []
-    sirt_added = False
-    thickness_replaced = False
-    exclude_added = False
-
-    for line in original_lines:
-        if line.startswith('THICKNESS') and not thickness_replaced:
-            new_lines.append(thickness_set)
-            thickness_replaced = True
-        elif line.startswith('TILTFILE') and not exclude_added:
-            if excludelist != '0':
-                new_lines.append(f'EXCLUDELIST\t{excludelist}\n')
-            exclude_added = True
-            new_lines.append(line)
-        elif line.startswith('InputProjections') and not sirt_added:
-            new_lines.append(SIRT_set)
-            new_lines.append(line)
-            sirt_added = True
-        else:
-            new_lines.append(line)
-
-    with open(tiltcom_out, 'w', encoding='utf-8') as file:
-        file.writelines(new_lines)
-
-def read_fiducial_file(path_to_fiducial_file):
-    """READ FIDUCIAL FILE AS CSV FOR FURTHER PROCESSING
-    """
-    fiducial_file_df = pd.read_csv(
+def read_fiducial_file(path_to_fiducial_file: str) -> pd.DataFrame:
+    """Reads a fiducial point file into a pandas DataFrame."""
+    # The columns are: object, contour, x, y, z
+    return pd.read_csv(
         path_to_fiducial_file,
         sep=r'\s+',
         header=None,
+        names=['object', 'contour', 'x', 'y', 'z'],
         engine='python'
     )
-    return fiducial_file_df
 
-def prepare_fiducial_file_to_write(fiducial_file_df,output_name):
-    """PREPARE FIDUCIAL FILE TO WRITE"""
-    fiducial_file_df[0] = fiducial_file_df[0].astype('int')
-    fiducial_file_df[1] = fiducial_file_df[1].astype('int')
-    fiducial_file_df.to_csv(output_name,index=False,header=False,sep ='\t') 
+# --- Main Optimizer Class ---
 
-def read_align_log(path_to_align_log):
-    """READ ALIGN LOG - SEPARATE DF FOR VIEWS AND CONTOURS"""
-    with open(path_to_align_log,'r') as file:
-        data = file.readlines()
-    
-    viewList = []
-    for i in range(0,len(data)):
-        lsplit = data[i].split()
-        if len(lsplit) > 0:
-            if lsplit[0] == "view":
-                c = 1
-                next_lsplit = data[i+c].split()
-                while len(data[i+c].split())>0:
-                    viewList.append(data[i+c].split())
-                    c+=1       
-        else:
-            continue
-    vn = np.array(viewList)
-    view_df = pd.DataFrame(vn).astype('float64')
-    
-    cList = []
-    for i in range(0,len(data)):
-        lsplit = data[i].split()
-        if len(lsplit) > 0:
-            if lsplit[0] == "3-D":
-                c = 2
-                next_lsplit = data[i+c].split()
-                while len(data[i+c].split())>0:
-                    cList.append(data[i+c].split())
-                    c+=1       
-        else:
-            continue
-    cn = np.array(cList)
-    contour_df = pd.DataFrame(cn).astype('float64')
-    
-    return view_df,contour_df
-
-
-def suggest_exclude_view_list(view_df,view_thr_sd):
-    """SUGGEST LIST OF VIEWS TO EXCLUDE BASED ON SD THRESHOLD"""
-    # view mean/std = error in column 7
-    view_mean = view_df.mean(axis=0)[7]
-    view_std = view_df.std(axis=0)[7]
-    view_thr = (view_thr_sd*view_std) + view_mean
-    t = view_df.iloc[:][7] < view_thr
-    to_exclude = [str(i+1) for i, x in enumerate(t) if not x]
-    if to_exclude:
-        suggested_views_to_exclude_str = ','.join(to_exclude)
-        suggested_views_to_exclude = [int(i+1) for i, x in enumerate(t) if not x]
-    else:
-        to_exclude = '0'
-        suggested_views_to_exclude_str = ','.join(to_exclude)
-        suggested_views_to_exclude = [int(i+1) for i, x in enumerate(t) if not x]
-
-    return suggested_views_to_exclude,suggested_views_to_exclude_str
-
- 
-def suggest_exclude_contour_list(contour_df,contour_thr_sd):
-    """SUGGEST LIST OF CONTOURS TO EXCLUDE BASED ON SD THRESHOLD"""
-    # contour mean/std = error in column 6
-    contour_mean = contour_df.mean(axis=0)[6]
-    contour_std = contour_df.std(axis=0)[6]
-    contour_thr = (contour_thr_sd*contour_std) + contour_mean
-    t = contour_df.iloc[:][6] < contour_thr
-    suggested_contours_to_exclude = [float(i+1) for i, x in enumerate(t) if not x]
-    
-    return suggested_contours_to_exclude
-
-
-def prune_fiducial_file(fiducial_file_df,suggested_contours_to_exclude):
-    """EDIT FIDUCIAL DF"""
-    logical_cont = fiducial_file_df[1].isin(suggested_contours_to_exclude)
-    indx_log = [i for i, x in enumerate(logical_cont) if x]
-    fid2 = fiducial_file_df.copy()
-    pruned_fiducial_file = fid2.drop(indx_log)
-    
-    return pruned_fiducial_file
-
-
-def makealigncom_excludeList(aligncom, aligncomout, excludelist, logger):
-    """MAKE ALIGN COM WITH EXCLUDE LIST"""
-    with open(aligncom, 'r') as file:
-        data = file.readlines()
-    
-    insert_pos = -1
-    for i, line in enumerate(data):
-        if line.startswith('LocalSkewDefaultGrouping'):
-            insert_pos = i + 1
-            break
-    
-    if insert_pos != -1:
-        if excludelist and excludelist != '0':
-            logger.info(f"Adding ExcludeList to {aligncomout}")
-            data.insert(insert_pos, f'ExcludeList\t{excludelist}\n')
-        else:
-            logger.info("No views to exclude.")
-    else:
-        logger.warning("Could not find 'LocalSkewDefaultGrouping' in align.com. ExcludeList not added.")
-
-    with open(aligncomout, 'w', encoding='utf-8') as file:
-        file.writelines(data)
-
-def check_alignlog(path_to_alignlog:str) -> bool:
-    """CHECK ALIGN LOG EXISTS AND WORKED"""
-    return 1 if os.path.exists(path_to_alignlog) and os.path.getsize(path_to_alignlog) > 10000 else 0
-
-
-def check_etomo_state(file_name:str) -> str:
-    """CHECK THE ETOMO BATCH LOG FILE AND SEE IF IT FINISHED SUCCESSFULLY
+class eTomoOptimizer:
     """
-    if not os.path.exists(file_name):
-        #logging.debug('log file not created yet, waiting')
-        return 0
-
-    with open(file_name, 'r') as f:
-        lines = f.readlines()
-        last_row = 1
-        while last_row:
-            if lines[last_row*-1] == '\n':
-                last_row +=1
-            else:
-                return(lines[last_row*-1].split()[0])
-
-####### FUNCTION BLOCK ABOVE #######
-####################################
-
-def optimization(ts: str) -> str:
+    Manages the optimization process for a single tomogram series.
     """
-    Performs alignment optimization for a single tomogram series.
-    This function is designed to be called by multiprocessing.Pool,
-    so it changes directory into the tomogram folder and sets up its own logger.
-    """
-    original_dir = os.getcwd()
-    os.chdir(ts)
+    def __init__(self, ts_directory: str):
+        self.ts_dir = os.path.abspath(ts_directory)
+        self.ts_name = os.path.basename(self.ts_dir)
+        self.logger = self._setup_logger()
 
-    logger = logging.getLogger(ts)
-    if not logger.handlers:
-        logger.setLevel(logging.INFO)
-        fh = logging.FileHandler('optimization.log', mode='w')
-        fh.setFormatter(logging.Formatter('%(asctime)s - %(process)d - %(levelname)s - %(message)s'))
-        logger.addHandler(fh)
-        logger.propagate = False
+        self.align_log_path = os.path.join(self.ts_dir, 'align.log')
+        self.final_mrc_path = os.path.join(self.ts_dir, f'{self.ts_name}_rot_flipz.mrc')
 
-    try:
-        final_file = f'{ts}_rot_flipz.mrc'
-        if os.path.exists(final_file):
-            logger.info(f'Final file {final_file} already exists. Skipping.')
-            return f'Skipped {ts}: Final file already exists.'
+    def _setup_logger(self) -> logging.Logger:
+        """Sets up a dedicated logger for this tomogram instance."""
+        logger = logging.getLogger(self.ts_name)
+        if not logger.handlers:
+            logger.setLevel(logging.INFO)
+            log_path = os.path.join(self.ts_dir, 'optimization.log')
+            fh = logging.FileHandler(log_path, mode='w')
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            fh.setFormatter(formatter)
+            logger.addHandler(fh)
+            logger.propagate = False
+        return logger
 
-        logger.info('Starting optimization.')
-
-        if not os.path.exists('align.log'):
-            raise FileNotFoundError("align.log not found. Cannot proceed with optimization.")
-
-        # --- Step 1: Analyze logs and decide on exclusions ---
-        subprocess.run(f'model2point -c -ob -inp {ts}.fid -ou {ts}_fid.pt', shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        fiducial_file_df = read_fiducial_file(f'{ts}_fid.pt')
-        view_df, contour_df = read_align_log('align.log')
-        suggested_views_to_exclude, suggested_views_to_exclude_str = suggest_exclude_view_list(view_df, view_thr_sd)
-        suggested_contours_to_exclude = suggest_exclude_contour_list(contour_df, contour_thr_sd)
-
-        logger.info("Creating cleaned newst.com and tilt.com with optimized parameters.")
-        makenewstcom('newst.com', 'newst_clean.com')
-        make_clean_tiltcom('tilt.com', 'tilt_clean.com', suggested_views_to_exclude_str)
-
-        if not suggested_views_to_exclude and not suggested_contours_to_exclude:
-            logger.info("No new views or contours to exclude. Skipping re-alignment step.")
-        else:
-            logger.info(f'Pruning: {len(suggested_views_to_exclude)} views and {len(suggested_contours_to_exclude)} contours to exclude.')
-            pruned_fiducial_file = prune_fiducial_file(fiducial_file_df, suggested_contours_to_exclude)
-            
-            prepare_fiducial_file_to_write(pruned_fiducial_file, f'{ts}_fidPrune.pt')
-            if not os.path.exists(f'{ts}_bk.fid'):
-                subprocess.run(f'mv {ts}.fid {ts}_bk.fid', shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            
-            # Redirect point2model output to the log file
-            with open('optimization.log', 'a') as log_file:
-                subprocess.run(f'point2model -op -ci 5 -w 2 -co 157,0,255 -zs 3 -im {ts}_preali.mrc -in {ts}_fidPrune.pt -ou {ts}.fid', shell=True, check=True, stdout=log_file, stderr=subprocess.STDOUT)
-            
-            logger.info("Creating cleaned align.com.")
-            makealigncom_excludeList('align.com', 'align_clean.com', suggested_views_to_exclude_str, logger)
-
-            logger.info('Running cleaned alignment...')
-            submfg('align_clean.com', logger)
-
-        logger.info('Running cleaned newstack and tilt...')
-        submfg('newst_clean.com', logger)
-        submfg('tilt_clean.com', logger)
-
-        if os.path.exists(f'{ts}_rec.mrc'):
-            logger.info(f'Starting final rotation on {ts}_rec.mrc.')
-            subprocess.run(f'trimvol -rx {ts}_rec.mrc {ts}_rot.mrc', shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            subprocess.run(f'clip flipz {ts}_rot.mrc {ts}_rot_flipz.mrc', shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            subprocess.run(f'rm -f {ts}_rot.mrc', shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            logger.info('Finished final rotation.')
-        else:
-            logger.warning(f'{ts}_rec.mrc does not exist. Cannot perform final rotation.')
-
-    except Exception as e:
-        logger.error(f"An error occurred during optimization for {ts}: {e}", exc_info=True)
-        # Try to capture the last few lines of the most recent log file for a summary
-        error_summary = str(e)
+    def _run_command(self, command: List[str], log_msg: str) -> None:
+        """Runs a command using subprocess and logs the output."""
+        self.logger.info(log_msg)
         try:
-            with open('align_clean.log', 'r') as f:
-                lines = f.readlines()
-                if lines:
-                    last_line = lines[-1].strip()
-                    error_summary = f"Error after/during align_clean.com. Last log line: {last_line}"
-        except FileNotFoundError:
-            pass
-        return f"{ts}: Optimization FAILED. Reason: {error_summary}"
-    finally:
-        handlers = logger.handlers[:]
-        for handler in handlers:
-            handler.close()
-            logger.removeHandler(handler)
-        os.chdir(original_dir)
+            result = subprocess.run(
+                command,
+                check=True,
+                capture_output=True,
+                text=True,
+                cwd=self.ts_dir
+            )
+            self.logger.debug(result.stdout)
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"Command '{' '.join(command)}' failed with return code {e.returncode}")
+            self.logger.error(e.stderr)
+            raise
 
-    if os.path.exists(f'{ts}/{ts}_rot_flipz.mrc'):
-        return f"{ts}: Optimization complete. Rotated tomogram saved."
-    else:
-        return f"{ts}: Optimization may have failed. Final tomogram not created."
+    def _analyze_and_prune(self) -> Tuple[str, bool]:
+        """
+        Analyzes alignment logs, suggests exclusions, and returns the view
+        exclusion list and a boolean indicating if re-alignment is needed.
+        """
+        view_df, contour_df = read_align_log(self.align_log_path)
+
+        if view_df.empty:
+            self.logger.warning("View data is empty after parsing. Cannot exclude views.")
+        if contour_df.empty:
+            self.logger.warning("Contour data is empty after parsing. Cannot exclude contours.")
+
+        # Suggest views to exclude based on residual mean and standard deviation
+        views_to_exclude = []
+        if 'resid-nm' in view_df.columns and not view_df.empty:
+            view_mean = view_df['resid-nm'].mean()
+            view_std = view_df['resid-nm'].std()
+            view_thr = (VIEW_THR_SD * view_std) + view_mean
+            views_to_exclude_df = view_df[view_df['resid-nm'] > view_thr]
+            views_to_exclude = views_to_exclude_df['view'].astype(int).astype(str).tolist()
+        views_to_exclude_str = ','.join(views_to_exclude) if views_to_exclude else '0'
+
+        # Suggest contours to exclude based on residual mean and standard deviation
+        contours_to_exclude = []
+        if 'resid-nm' in contour_df.columns and not contour_df.empty:
+            contour_mean = contour_df['resid-nm'].mean()
+            contour_std = contour_df['resid-nm'].std()
+            contour_thr = (CONTOUR_THR_SD * contour_std) + contour_mean
+            contours_to_exclude_df = contour_df[contour_df['resid-nm'] > contour_thr]
+            contours_to_exclude = contours_to_exclude_df['cont'].astype(int).unique().tolist()
+
+        realign_needed = bool(views_to_exclude or contours_to_exclude)
+        if not realign_needed:
+            self.logger.info("No new views or contours to exclude. Skipping re-alignment.")
+            return '0', False
+
+        self.logger.info(f'Pruning: {len(views_to_exclude)} views and {len(contours_to_exclude)} contours to exclude.')
+        
+        # Prune fiducial file if necessary
+        if contours_to_exclude:
+            fid_pt_path = os.path.join(self.ts_dir, f'{self.ts_name}_fid.pt')
+            self._run_command(['model2point', '-c', '-ob', '-inp', f'{self.ts_name}.fid', '-ou', fid_pt_path], "Converting .fid to .pt")
+            
+            fid_df = read_fiducial_file(fid_pt_path)
+            
+            logical_cont = fid_df['contour'].isin(contours_to_exclude)
+            pruned_fid_df = fid_df.drop(fid_df[logical_cont].index)
+
+            pruned_fid_pt_path = os.path.join(self.ts_dir, f'{self.ts_name}_fidPrune.pt')
+            
+            # Ensure correct types before saving
+            for col in ['point', 'contour']:
+                if col in pruned_fid_df:
+                    pruned_fid_df[col] = pruned_fid_df[col].astype('int')
+
+            # Select only the columns that point2model needs
+            output_df = pruned_fid_df[['object', 'contour', 'x', 'y', 'z']]
+            output_df.to_csv(pruned_fid_pt_path, index=False, header=False, sep='\t')
+
+            # Backup original and create new .fid file
+            if not os.path.exists(os.path.join(self.ts_dir, f'{self.ts_name}_bk.fid')):
+                os.rename(os.path.join(self.ts_dir, f'{self.ts_name}.fid'), os.path.join(self.ts_dir, f'{self.ts_name}_bk.fid'))
+            
+            self._run_command([
+                'point2model', '-op', '-ci', '5', '-w', '2', '-co', '157,0,255', '-zs', '3',
+                '-im', f'{self.ts_name}_preali.mrc', '-in', pruned_fid_pt_path, '-ou', f'{self.ts_name}.fid'
+            ], "Creating new .fid from pruned points")
+
+        return views_to_exclude_str, True
+
+    def _create_command_files(self, views_to_exclude_str: str, realign_needed: bool):
+        """Creates the necessary .com files for IMOD."""
+        # Create newst_clean.com
+        with open(os.path.join(self.ts_dir, 'newst.com'), 'r') as f_in, \
+             open(os.path.join(self.ts_dir, 'newst_clean.com'), 'w') as f_out:
+            for line in f_in:
+                if line.startswith('SizeToOutputInXandY'):
+                    f_out.write(f"SizeToOutputInXandY\t{FINAL_X_SIZE},{FINAL_Y_SIZE}\n")
+                else:
+                    f_out.write(line)
+
+        # Create tilt_clean.com
+        with open(os.path.join(self.ts_dir, 'tilt.com'), 'r') as f_in, \
+             open(os.path.join(self.ts_dir, 'tilt_clean.com'), 'w') as f_out:
+            lines = f_in.readlines()
+            sirt_added = any('FakeSIRTiterations' in line for line in lines)
+            for line in lines:
+                if line.startswith('THICKNESS'):
+                    f_out.write(f'THICKNESS\t{int(THICKNESS_PXL / FINAL_NEWSTACK_BIN)}\n')
+                elif line.startswith('TILTFILE') and views_to_exclude_str != '0':
+                    f_out.write(f'EXCLUDELIST\t{views_to_exclude_str}\n')
+                    f_out.write(line)
+                elif line.startswith('InputProjections') and not sirt_added:
+                    f_out.write(f'FakeSIRTiterations\t{SIRT_ITERATIONS}\n')
+                    f_out.write(line)
+                    sirt_added = True
+                else:
+                    f_out.write(line)
+
+        # Create align_clean.com if needed
+        if realign_needed:
+            with open(os.path.join(self.ts_dir, 'align.com'), 'r') as f_in, \
+                 open(os.path.join(self.ts_dir, 'align_clean.com'), 'w') as f_out:
+                for line in f_in:
+                    f_out.write(line)
+                    if line.startswith('LocalSkewDefaultGrouping') and views_to_exclude_str != '0':
+                        f_out.write(f'ExcludeList\t{views_to_exclude_str}\n')
+
+    def run(self) -> str:
+        """Executes the full optimization pipeline for the tomogram."""
+        if os.path.exists(self.final_mrc_path):
+            self.logger.info(f'Final file already exists. Skipping.')
+            return f'Skipped {self.ts_name}: Final file already exists.'
+
+        self.logger.info('Starting optimization.')
+        if not os.path.exists(self.align_log_path):
+            return f"FAILED {self.ts_name}: align.log not found."
+
+        try:
+            views_to_exclude_str, realign_needed = self._analyze_and_prune()
+            self._create_command_files(views_to_exclude_str, realign_needed)
+
+            if realign_needed:
+                self._run_command(['submfg', 'align_clean.com'], 'Running cleaned alignment...')
+            
+            self.logger.info('Running cleaned newstack and tilt...')
+            self._run_command(['submfg', 'newst_clean.com'], 'Running newstack...')
+            self._run_command(['submfg', 'tilt_clean.com'], 'Running tilt...')
+
+            rec_file = os.path.join(self.ts_dir, f'{self.ts_name}_rec.mrc')
+            if os.path.exists(rec_file):
+                self.logger.info(f'Starting final rotation on {rec_file}.')
+                rot_file = os.path.join(self.ts_dir, f'{self.ts_name}_rot.mrc')
+                self._run_command(['trimvol', '-rx', rec_file, rot_file], "Rotating tomogram...")
+                self._run_command(['clip', 'flipz', rot_file, self.final_mrc_path], "Flipping Z-axis...")
+                os.remove(rot_file)
+                self.logger.info('Finished final rotation.')
+            else:
+                self.logger.warning(f'{rec_file} does not exist. Cannot perform final rotation.')
+
+        except (LogParsingError, ValueError) as e:
+            self.logger.error(f"Analysis failed due to a parsing or value error: {e}", exc_info=True)
+            return f"{self.ts_name}: Optimization FAILED. Reason: {e}"
+        except Exception as e:
+            self.logger.error(f"An unexpected error occurred: {e}", exc_info=True)
+            return f"{self.ts_name}: Optimization FAILED. Reason: {e}"
+        finally:
+            logging.shutdown()
+
+        if os.path.exists(self.final_mrc_path):
+            return f"{self.ts_name}: Optimization complete. Rotated tomogram saved."
+        else:
+            return f"{self.ts_name}: Optimization may have failed. Final tomogram not created."
 
 
-def run_optimization():
-    """Main function to run the eTomo optimization process."""   
-    logger = logging.getLogger(__name__)
+def optimization_worker(ts_directory: str) -> str:
+    """
+    Worker function for multiprocessing.Pool.
+    Instantiates and runs the eTomoOptimizer for a given tomogram directory.
+    """
+    optimizer = eTomoOptimizer(ts_directory)
+    return optimizer.run()
 
+
+def run_optimization_pipeline():
+    """Main function to find tomograms and run the optimization in parallel."""
+    main_logger = logging.getLogger(__name__)
+    
     try:
-        tomo_list = list_tomo()
-    except FileNotFoundError as e:
-        logger.error(e)
+        tomo_list = sorted(glob.glob(f'{TOMO_MATCH_STRING}*'))
+        if not tomo_list:
+            main_logger.error(f"No tomogram directories found matching pattern: {TOMO_MATCH_STRING}*")
+            return
+    except Exception as e:
+        main_logger.error(f"Error finding tomograms: {e}")
         return
 
-    logger.info(f"Starting parallel optimization for {len(tomo_list)} tomograms...")
+    main_logger.info(f"Starting parallel optimization for {len(tomo_list)} tomograms...")
     
-    with Pool(cfg.etomo_cpu_cores) as pool:
-        results = [pool.apply_async(optimization, args=(ts,)) for ts in tomo_list]
+    with Pool(NUM_CPU_CORES) as pool:
+        results = pool.map(optimization_worker, tomo_list)
         for res in results:
-            logger.info(res.get())
+            main_logger.info(res)
             
-    logger.info("All optimization tasks are complete.")
+    main_logger.info("All optimization tasks are complete.")
 
 
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        format='%(asctime)s - %(levelname)s - %(message)s',
         stream=sys.stdout
     )
-    run_optimization()
+    run_optimization_pipeline()

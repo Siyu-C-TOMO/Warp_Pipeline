@@ -8,8 +8,6 @@ import subprocess
 import glob
 import shutil
 import config as cfg
-from etomo_optimize import run_optimization
-from xml_parser import run_xml_parsing
 
 def run_preprocess():
     """Runs the preprocessing stage, assuming CWD is the dataset directory."""
@@ -29,9 +27,8 @@ def run_preprocess():
             os.symlink(mdoc_file, os.path.join("mdocs", base_name))
 
     frame_source_path = os.path.join(cfg.raw_directory, cfg.dataset_name, cfg.frame_folder)
-    # Use the specific tomo_match_string for linking frames as well
-    #for frame_file in glob.glob(os.path.join(frame_source_path, f"{cfg.tomo_match_string}*")):
-    for frame_file in glob.glob(os.path.join(frame_source_path, "L1_G1_ts_00*")):
+    for frame_file in glob.glob(os.path.join(frame_source_path, f"{cfg.tomo_match_string}*")):
+    #for frame_file in glob.glob(os.path.join(frame_source_path, "L1_G1_ts_00*")):
         if not os.path.lexists(os.path.join("frames", os.path.basename(frame_file))):
             os.symlink(frame_file, os.path.join("frames", os.path.basename(frame_file)))
     
@@ -291,7 +288,10 @@ def run_postprocess():
                         defocus = line.split('"')[3]
                         break
             
-            logging.info(f"Tomogram {tomo_name} Defocus is {defocus}")
+            if not defocus:
+                logging.warning(f"Defocus not found for {tomo_name}, skipping deconvolution.")
+                continue
+            
             tomo_dir = f"warp_tiltseries/tiltstack/{tomo_name}"
             rec_file = f"{tomo_name}_rot_flipz.mrc"
             mrc_file = f"{tomo_name}_rot_flipz_dev.mrc"
@@ -330,7 +330,7 @@ def main():
     parser.add_argument(
         '--stage',
         type=str,
-        choices=['preprocess', 'etomo', 'postprocess', 'all'],
+        choices=['preprocess', 'etomo', 'optimize', 'postprocess', 'all'],
         default='all',
         help="Which stage of the pipeline to run."
     )
@@ -364,6 +364,7 @@ def main():
             run_preprocess()
         if args.stage in ['all', 'etomo']:
             run_builtin_etomo()
+        if args.stage in ['all', 'optimize']:
             optimize_etomo()
         if args.stage in ['all', 'postprocess']:
             run_postprocess()
