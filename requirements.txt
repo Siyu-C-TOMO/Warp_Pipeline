@@ -1,0 +1,5 @@
+# This file lists the core Python dependencies for the Warp_Pipeline project.
+# You can install them using: pip install -r requirements.txt
+
+pandas
+numpy
