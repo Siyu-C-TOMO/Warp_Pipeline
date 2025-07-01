@@ -1,0 +1,8 @@
+#!/bin/bash
+# This is a wrapper script for submfg to ensure IMOD_DIR is set.
+
+# Set the IMOD_DIR environment variable explicitly
+export IMOD_DIR=/software/repo/all/imod/4.11.25
+
+# Execute the real submfg with all passed arguments
+/software/repo/all/imod/4.11.25/bin/submfg "$@"
