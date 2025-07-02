@@ -21,7 +21,7 @@ def run_preprocess(logs_dir: Path):
     frames_dir.mkdir(exist_ok=True)
     
     mdoc_source_path = Path(cfg.raw_directory) / cfg.dataset_name / cfg.mdoc_folder
-    for mdoc_file in mdoc_source_path.glob(f"{cfg.tomo_match_string}?.mrc.mdoc"):
+    for mdoc_file in mdoc_source_path.glob(f"{cfg.tomo_match_string}*_ts_???.mrc.mdoc"):
         dest_file = Path("mdocs") / mdoc_file.name.replace(".mrc.", ".")
         if not dest_file.exists():
             dest_file.symlink_to(mdoc_file)
