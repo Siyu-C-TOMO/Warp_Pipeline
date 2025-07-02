@@ -7,7 +7,7 @@ raw_directory = "/data/Microscopy/Titan/Siyu"
 frame_folder = "frames"
 mdoc_folder = "mdocs"
 gain_ref = "20250602_143520_EER_GainReference.gain"
-tomo_match_string = "L"
+tomo_match_string = "L1_G1_ts_00"
 
 # --- Key Acquisition Parameters ---
 # These are the most common parameters you will need to change.

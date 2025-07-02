@@ -17,12 +17,15 @@
 
 import os
 import pandas as pd
-import subprocess
 from multiprocessing import Pool
 import logging
 import sys
-from typing import List, Tuple, Iterator, Union, Dict
+import argparse
+from typing import List, Tuple, Union, Dict
 from pathlib import Path
+from functools import partial
+
+from pipeline_utils import read_align_log, read_fiducial_file, LogParsingError, run_command
 
 # --- Configuration and Constants ---
 try:
@@ -48,73 +51,16 @@ VIEW_THR_SD = 2
 CONTOUR_THR_SD = 2
 SIRT_ITERATIONS = 20
 
-class LogParsingError(Exception):
-    """Custom exception for errors during log file parsing."""
-    pass
-
-# --- Helper Functions (File I/O) ---
-
-def parse_section(lines_iterator: Iterator[str], expected_tokens: List[str]) -> pd.DataFrame:
-    """Finds and parses a specific data section from the log file lines."""
-    header = None
-    data_lines = []
-    
-    for line in lines_iterator:
-        tokens = line.strip().split()
-        if len(tokens) >= len(expected_tokens) and all(
-            tokens[i] == expected_tokens[i] for i in range(len(expected_tokens))
-        ):
-            header = line.strip().replace('#', 'point_num').split()
-            break
-    
-    if not header:
-        raise LogParsingError(f"Header with starting tokens {expected_tokens} not found.")
-        
-    for line in lines_iterator:
-        if not line.strip():
-            break
-        data_lines.append(line.split())
-        
-    if not data_lines:
-        logging.warning(f"Found header for {expected_tokens} but no data rows followed.")
-        return pd.DataFrame(columns=header)
-        
-    df = pd.DataFrame(data_lines, columns=header)
-    for col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors='coerce')
-    
-    if 'resid-nm' in df.columns:
-        df.dropna(subset=['resid-nm'], inplace=True)
-    return df
-
-def read_align_log(path_to_align_log: Path) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """Reads an IMOD align log and separates it into DataFrames for views and contours."""
-    with path_to_align_log.open('r') as f:
-        lines = f.readlines()
-
-    view_df = parse_section(iter(lines), ['view', 'rotation', 'tilt'])
-    contour_df = parse_section(iter(lines), ['#', 'X', 'Y'])
-    
-    return view_df, contour_df
-
-
-def read_fiducial_file(path_to_fiducial_file: Path) -> pd.DataFrame:
-    """Reads a fiducial point file into a pandas DataFrame."""
-    return pd.read_csv(
-        path_to_fiducial_file,
-        sep=r'\s+',
-        header=None,
-        names=['object', 'contour', 'x', 'y', 'z'],
-        engine='python'
-    )
-
 # --- Main Optimizer Class ---
 
 class eTomoOptimizer:
     """Manages the optimization process for a single tomogram series."""
-    def __init__(self, ts_directory: str):
+    def __init__(self, ts_directory: str, tomogram_logs_dir: Path):
         self.ts_dir = Path(ts_directory).resolve()
         self.ts_name = self.ts_dir.name
+        self.log_dir = tomogram_logs_dir / self.ts_name
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        
         self.logger = self._setup_logger()
 
         self.align_log_path = self.ts_dir / 'align.log'
@@ -125,30 +71,13 @@ class eTomoOptimizer:
         logger = logging.getLogger(self.ts_name)
         if not logger.handlers:
             logger.setLevel(logging.INFO)
-            log_path = self.ts_dir / 'optimization.log'
+            log_path = self.log_dir / 'optimization.log'
             fh = logging.FileHandler(log_path, mode='w')
             formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
             fh.setFormatter(formatter)
             logger.addHandler(fh)
             logger.propagate = False
         return logger
-
-    def _run_command(self, command: List[str], log_msg: str) -> None:
-        """Runs a command using subprocess and logs the output."""
-        self.logger.info(log_msg)
-        try:
-            result = subprocess.run(
-                command,
-                check=True,
-                capture_output=True,
-                text=True,
-                cwd=self.ts_dir
-            )
-            self.logger.debug(result.stdout)
-        except subprocess.CalledProcessError as e:
-            self.logger.error(f"Command '{' '.join(command)}' failed with return code {e.returncode}")
-            self.logger.error(e.stderr)
-            raise
 
     def _identify_outliers(self, df: pd.DataFrame, id_col: str, threshold_sd: float) -> List[Union[str, int]]:
         """Identifies outliers in a DataFrame based on the standard deviation of 'resid-nm'."""
@@ -185,7 +114,8 @@ class eTomoOptimizer:
         self.logger.info(f"Pruning {len(contours_to_exclude)} contours from fiducial model.")
         
         fid_pt_path = self.ts_dir / f'{self.ts_name}_fid.pt'
-        self._run_command(['model2point', '-c', '-ob', '-inp', f'{self.ts_name}.fid', '-ou', str(fid_pt_path)], "Converting .fid to .pt")
+        cmd = ['model2point', '-c', '-ob', '-inp', f'{self.ts_name}.fid', '-ou', str(fid_pt_path)]
+        run_command(cmd, self.log_dir / 'log_model2point.log', cwd=self.ts_dir)
         
         fid_df = read_fiducial_file(fid_pt_path)
         pruned_fid_df = fid_df[~fid_df['contour'].isin(contours_to_exclude)]
@@ -199,10 +129,11 @@ class eTomoOptimizer:
         if not backup_fid.exists():
             original_fid.rename(backup_fid)
         
-        self._run_command([
+        cmd = [
             'point2model', '-op', '-ci', '5', '-w', '2', '-co', '157,0,255', '-zs', '3',
             '-im', f'{self.ts_name}_preali.mrc', '-in', str(pruned_fid_pt_path), '-ou', str(original_fid)
-        ], "Creating new .fid from pruned points")
+        ]
+        run_command(cmd, self.log_dir / 'log_point2model.log', cwd=self.ts_dir)
 
     def _update_com_file(self, source_path: Path, dest_path: Path, modifications: Dict[str, Dict[str, str]]):
         """
@@ -281,15 +212,15 @@ class eTomoOptimizer:
     def _reconstruct(self):
         """Runs the reconstruction and finalization steps."""
         self.logger.info('Running cleaned newstack and tilt...')
-        self._run_command(['submfg', 'newst_clean.com'], 'Running newstack...')
-        self._run_command(['submfg', 'tilt_clean.com'], 'Running tilt...')
+        run_command(['submfg', 'newst_clean.com'], self.log_dir / 'log_newst.log', cwd=self.ts_dir)
+        run_command(['submfg', 'tilt_clean.com'], self.log_dir / 'log_tilt.log', cwd=self.ts_dir)
 
         rec_file = self.ts_dir / f'{self.ts_name}_rec.mrc'
         if rec_file.exists():
             self.logger.info(f'Starting final rotation on {rec_file}.')
             rot_file = self.ts_dir / f'{self.ts_name}_rot.mrc'
-            self._run_command(['trimvol', '-rx', str(rec_file), str(rot_file)], "Rotating tomogram...")
-            self._run_command(['clip', 'flipz', str(rot_file), str(self.final_mrc_path)], "Flipping Z-axis...")
+            run_command(['trimvol', '-rx', str(rec_file), str(rot_file)], self.log_dir / 'log_trimvol.log', cwd=self.ts_dir)
+            run_command(['clip', 'flipz', str(rot_file), str(self.final_mrc_path)], self.log_dir / 'log_clip.log', cwd=self.ts_dir)
             rot_file.unlink()
             self.logger.info('Finished final rotation.')
         else:
@@ -319,7 +250,8 @@ class eTomoOptimizer:
             self._create_com_files(views_to_exclude_str, realign_needed)
 
             if realign_needed:
-                self._run_command(['submfg', 'align_clean.com'], 'Running cleaned alignment...')
+                self.logger.info('Running cleaned alignment...')
+                run_command(['submfg', 'align_clean.com'], self.log_dir / 'log_align.log', cwd=self.ts_dir)
             
             self._reconstruct()
 
@@ -338,36 +270,46 @@ class eTomoOptimizer:
             return f"{self.ts_name}: Optimization may have failed. Final tomogram not created."
 
 
-def optimization_worker(ts_directory: str) -> str:
+def optimization_worker(ts_directory: str, tomogram_logs_dir: Path) -> str:
     """
     Worker function for multiprocessing.Pool.
     Instantiates and runs the eTomoOptimizer for a given tomogram directory.
     """
     try:
-        optimizer = eTomoOptimizer(ts_directory)
+        optimizer = eTomoOptimizer(ts_directory, tomogram_logs_dir)
         return optimizer.run()
     except Exception as e:
+        # Use a generic logger here as this part runs in a separate process
         logging.error(f"Failed to initialize or run optimizer for {ts_directory}: {e}", exc_info=True)
         return f"FAILED {ts_directory}: {e}"
 
 
-def run_optimization_pipeline():
+def run_optimization_pipeline(tiltstack_dir: Path, main_logs_dir: Path):
     """Main function to find tomograms and run the optimization in parallel."""
     main_logger = logging.getLogger(__name__)
     
+    tomogram_logs_dir = main_logs_dir / 'tomograms'
+    tomogram_logs_dir.mkdir(exist_ok=True)
+    
+    if not tiltstack_dir.is_dir():
+        main_logger.error(f"Provided tiltstack directory does not exist: {tiltstack_dir}")
+        return
+
     try:
-        tomo_list = sorted([str(p) for p in Path.cwd().glob(f'{TOMO_MATCH_STRING}*') if p.is_dir()])
+        tomo_list = sorted([str(p) for p in tiltstack_dir.glob(f'{TOMO_MATCH_STRING}*') if p.is_dir()])
         if not tomo_list:
-            main_logger.error(f"No tomogram directories found matching pattern: {TOMO_MATCH_STRING}*")
+            main_logger.error(f"No tomogram directories found in {tiltstack_dir} matching pattern: {TOMO_MATCH_STRING}*")
             return
     except Exception as e:
-        main_logger.error(f"Error finding tomograms: {e}")
+        main_logger.error(f"Error finding tomograms in {tiltstack_dir}: {e}")
         return
 
     main_logger.info(f"Starting parallel optimization for {len(tomo_list)} tomograms...")
     
+    worker_with_logs = partial(optimization_worker, tomogram_logs_dir=tomogram_logs_dir)
+    
     with Pool(NUM_CPU_CORES) as pool:
-        results = pool.map(optimization_worker, tomo_list)
+        results = pool.map(worker_with_logs, tomo_list)
         for res in results:
             main_logger.info(res)
             
@@ -375,9 +317,25 @@ def run_optimization_pipeline():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="eTomo optimization script.")
+    parser.add_argument(
+        '--tiltstack_dir', 
+        type=Path, 
+        required=True,
+        help="Path to the directory containing tomogram subdirectories (e.g., warp_tiltseries/tiltstack)."
+    )
+    parser.add_argument(
+        '--main_logs_dir', 
+        type=Path, 
+        required=True,
+        help="Path to the main logs directory for the project."
+    )
+    args = parser.parse_args()
+
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
         stream=sys.stdout
     )
-    run_optimization_pipeline()
+    
+    run_optimization_pipeline(args.tiltstack_dir, args.main_logs_dir)

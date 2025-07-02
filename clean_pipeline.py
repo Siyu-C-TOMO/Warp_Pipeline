@@ -5,36 +5,37 @@ import logging
 import os
 import sys
 import subprocess
-import glob
 import shutil
-import config as cfg
+from pathlib import Path
 
-def run_preprocess():
-    """Runs the preprocessing stage, assuming CWD is the dataset directory."""
+import config as cfg
+from pipeline_utils import run_command, update_xml_files_from_com
+
+def run_preprocess(logs_dir: Path):
+    """Runs the preprocessing stage."""
     logging.info("Starting preprocessing stage...")
     
-    if not os.path.exists("logs"):
-        os.makedirs("logs")
-
     logging.info("Linking data files...")
-    os.makedirs("mdocs", exist_ok=True)
-    os.makedirs("frames", exist_ok=True)
+    Path("mdocs").mkdir(exist_ok=True)
+    frames_dir = Path("frames")
+    frames_dir.mkdir(exist_ok=True)
     
-    mdoc_source_path = os.path.join(cfg.raw_directory, cfg.dataset_name, cfg.mdoc_folder)
-    for mdoc_file in glob.glob(os.path.join(mdoc_source_path, f"{cfg.tomo_match_string}*ts_???.mrc.mdoc")):
-        base_name = os.path.basename(mdoc_file).replace(".mrc.", ".")
-        if not os.path.lexists(os.path.join("mdocs", base_name)):
-            os.symlink(mdoc_file, os.path.join("mdocs", base_name))
+    mdoc_source_path = Path(cfg.raw_directory) / cfg.dataset_name / cfg.mdoc_folder
+    for mdoc_file in mdoc_source_path.glob(f"{cfg.tomo_match_string}?.mrc.mdoc"):
+        dest_file = Path("mdocs") / mdoc_file.name.replace(".mrc.", ".")
+        if not dest_file.exists():
+            dest_file.symlink_to(mdoc_file)
 
-    frame_source_path = os.path.join(cfg.raw_directory, cfg.dataset_name, cfg.frame_folder)
-    for frame_file in glob.glob(os.path.join(frame_source_path, f"{cfg.tomo_match_string}*")):
-    #for frame_file in glob.glob(os.path.join(frame_source_path, "L1_G1_ts_00*")):
-        if not os.path.lexists(os.path.join("frames", os.path.basename(frame_file))):
-            os.symlink(frame_file, os.path.join("frames", os.path.basename(frame_file)))
+    frame_source_path = Path(cfg.raw_directory) / cfg.dataset_name / cfg.frame_folder
+    for frame_file in frame_source_path.glob(f"{cfg.tomo_match_string}*"):
+        dest_file = frames_dir / frame_file.name
+        if not dest_file.exists():
+            dest_file.symlink_to(frame_file)
     
-    gain_ref_path = os.path.join(frame_source_path, cfg.gain_ref)
-    if not os.path.lexists(os.path.join("frames", cfg.gain_ref)):
-        os.symlink(gain_ref_path, os.path.join("frames", cfg.gain_ref))
+    gain_ref_path = frame_source_path / cfg.gain_ref
+    gain_ref_link = frames_dir / cfg.gain_ref
+    if not gain_ref_link.exists():
+        gain_ref_link.symlink_to(gain_ref_path)
 
     logging.info("Creating frame series settings...")
     cmd_frame_settings = [
@@ -45,14 +46,13 @@ def run_preprocess():
         "--extension", "*.eer",
         "--angpix", str(cfg.angpix),
         "--exposure", str(cfg.dose),
-        "--gain_path", os.path.join("frames", cfg.gain_ref),
+        "--gain_path", str(gain_ref_link),
         "--eer_ngroups", str(cfg.eer_ngroups)
     ]
-    with open("logs/frame_settings.log", "w") as log_file:
-        subprocess.run(cmd_frame_settings, check=True, stdout=log_file, stderr=subprocess.STDOUT)
+    run_command(cmd_frame_settings, logs_dir / "frame_settings.log")
 
     logging.info("Creating tilt series settings...")
-    os.makedirs("tomostar", exist_ok=True)
+    Path("tomostar").mkdir(exist_ok=True)
     cmd_tilt_settings = [
         "WarpTools", "create_settings",
         "--output", "warp_tiltseries.settings",
@@ -60,12 +60,11 @@ def run_preprocess():
         "--folder_data", "tomostar",
         "--extension", "*.tomostar",
         "--angpix", str(cfg.angpix),
-        "--gain_path", os.path.join("frames", cfg.gain_ref),
+        "--gain_path", str(gain_ref_link),
         "--exposure", str(cfg.dose),
         "--tomo_dimensions", f"{cfg.original_x_y_size[0]}x{cfg.original_x_y_size[1]}x{cfg.thickness_pxl}"
     ]
-    with open("logs/tilt_settings.log", "w") as log_file:
-        subprocess.run(cmd_tilt_settings, check=True, stdout=log_file, stderr=subprocess.STDOUT)
+    run_command(cmd_tilt_settings, logs_dir / "tilt_settings.log")
 
     logging.info("Running frame series motion and CTF estimation...")
     cmd_motion_ctf = [
@@ -79,10 +78,9 @@ def run_preprocess():
         "--out_averages",
         "--out_average_halves",
         "--device_list", str(cfg.gpu_devices[0]),
-        "--perdevice", str(cfg.jobs_per_gpu*2)  # Adjusted for motion and CTF
+        "--perdevice", str(cfg.jobs_per_gpu * 2)
     ]
-    with open("logs/motion_ctf.log", "w") as log_file:
-        subprocess.run(cmd_motion_ctf, check=True, stdout=log_file, stderr=subprocess.STDOUT)
+    run_command(cmd_motion_ctf, logs_dir / "motion_ctf.log")
 
     logging.info("Plotting histograms of 2D processing metrics...")
     cmd_histograms = [
@@ -90,8 +88,7 @@ def run_preprocess():
         "--settings", "warp_frameseries.settings",
         "--histograms"
     ]
-    with open("logs/histograms.log", "w") as log_file:
-        subprocess.run(cmd_histograms, check=True, stdout=log_file, stderr=subprocess.STDOUT)
+    run_command(cmd_histograms, logs_dir / "histograms.log")
 
     logging.info("Importing tilt series metadata...")
     cmd_ts_import = [
@@ -102,18 +99,17 @@ def run_preprocess():
         "--dont_invert",
         "--output", "tomostar"
     ]
-    with open("logs/tomostar.log", "w") as log_file:
-        subprocess.run(cmd_ts_import, check=True, stdout=log_file, stderr=subprocess.STDOUT)
+    run_command(cmd_ts_import, logs_dir / "tomostar.log")
 
     logging.info("Preprocessing stage completed.")
 
-def run_builtin_etomo():
-    """Runs the eTomo alignment stage with a patched environment for testing."""
-    logging.info("Starting Patched eTomo alignment stage for testing...")
+def run_builtin_etomo(logs_dir: Path):
+    """Runs the eTomo alignment stage with a patched environment."""
+    logging.info("Starting Patched eTomo alignment stage...")
 
-    pipeline_dir = os.path.dirname(os.path.abspath(__file__))
-    wrapper_dir = os.path.join(pipeline_dir, 'imod_wrappers')
-    if not os.path.isdir(wrapper_dir):
+    pipeline_dir = Path(__file__).parent.resolve()
+    wrapper_dir = pipeline_dir / 'imod_wrappers'
+    if not wrapper_dir.is_dir():
         logging.error(f"IMOD wrapper directory not found at: {wrapper_dir}")
         return
 
@@ -123,75 +119,61 @@ def run_builtin_etomo():
     cmd_to_run = [
         "WarpTools", "ts_etomo_patches",
         "--settings", "warp_tiltseries.settings",
-        "--angpix", str(cfg.angpix*cfg.FINAL_NEWSTACK_BIN),
+        "--angpix", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
         "--initial_axis", str(cfg.tilt_axis_angle), 
         "--patch_size", "512",
-#        "--do_axis_search",
         "--device_list", str(cfg.gpu_devices[0]),
-        "--perdevice", str(cfg.jobs_per_gpu*2)  # Adjusted for eTomo patches
+        "--perdevice", str(cfg.jobs_per_gpu * 2)
     ]
-    
-    with open("logs/etomo_patches.log", "w") as log_file:
-        subprocess.run(cmd_to_run, check=True, stdout=log_file, stderr=subprocess.STDOUT, env=env)
+    run_command(cmd_to_run, logs_dir / "etomo_patches.log", env=env)
 
     logging.info("Patched eTomo test stage completed.")
 
-def optimize_etomo():
+def optimize_etomo(logs_dir: Path):
     """Runs the customized eTomo optimization stage."""
     logging.info("Starting eTomo optimization stage...")
     
-    original_dir = os.getcwd()
-    etomo_dir = os.path.join(original_dir, "warp_tiltseries", "tiltstack")
-    
-    if not os.path.isdir(etomo_dir):
+    etomo_dir = Path.cwd() / "warp_tiltseries" / "tiltstack"
+    if not etomo_dir.is_dir():
         logging.error(f"eTomo directory not found at: {etomo_dir}")
         logging.error("Please ensure the preprocessing stage was run successfully.")
         return
 
-    script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'etomo_optimize.py')
-    log_path = os.path.join(original_dir, 'logs', 'etomo_optimization.log')
+    script_path = Path(__file__).parent.resolve() / 'etomo_optimize.py'
+    log_path = logs_dir / 'etomo_optimization.log'
+
+    command = [
+        sys.executable, str(script_path), 
+        '--tiltstack_dir', str(etomo_dir),
+        '--main_logs_dir', str(logs_dir)
+    ]
 
     try:
-        logging.info(f"Changing directory to {etomo_dir} to run optimization script.")
-        os.chdir(etomo_dir)
-        
-        with open(log_path, 'w') as log_file:
-            subprocess.run(
-                [sys.executable, script_path],
-                check=True,
-                stdout=log_file,
-                stderr=subprocess.STDOUT
-            )
-            
-    except subprocess.CalledProcessError as e:
-        logging.error(f"eTomo optimization script failed with exit code {e.returncode}.")
+        run_command(command, log_path)
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        logging.error(f"eTomo optimization script failed: {e}")
         logging.error(f"Check the log for details: {log_path}")
-    except FileNotFoundError:
-        logging.error(f"Could not find the optimization script at {script_path}")
-    finally:
-        logging.info(f"Returning to directory: {original_dir}")
-        os.chdir(original_dir)
         
     logging.info("eTomo optimization stage completed.")
 
-def run_postprocess():
-    """Runs the post-processing stage, assuming CWD is the dataset directory."""
+def run_postprocess(logs_dir: Path):
+    """Runs the post-processing stage."""
     logging.info("Starting post-processing stage...")
     
     logging.info("Extracting RMD and saving table...")
-    rmd_error_log = "logs/eTomo_RMD_error.txt"
-    if os.path.exists(rmd_error_log):
-        os.rename(rmd_error_log, rmd_error_log + "~")
+    rmd_error_log = logs_dir / "eTomo_RMD_error.txt"
+    if rmd_error_log.exists():
+        rmd_error_log.rename(str(rmd_error_log) + "~")
     
-    with open(rmd_error_log, "w") as f:
-        for d in glob.glob("warp_tiltseries/tiltstack/L*"):
-            align_log = os.path.join(d, "align_clean.log")
-            if os.path.exists(align_log):
-                with open(align_log, "r") as log_file:
+    with rmd_error_log.open("w") as f:
+        for d in Path("warp_tiltseries/tiltstack").glob("L*"):
+            align_log = d / "align_clean.log"
+            if align_log.exists():
+                with align_log.open("r") as log_file:
                     for line in log_file:
                         if "Residual error weighted mean" in line:
                             new_rm = line.split()[-2]
-                            f.write(f"{os.path.basename(d)}\t{new_rm}\n")
+                            f.write(f"{d.name}\t{new_rm}\n")
                             break
 
     logging.info("Importing improved alignments...")
@@ -199,10 +181,9 @@ def run_postprocess():
         "WarpTools", "ts_import_alignments",
         "--settings", "warp_tiltseries.settings",
         "--alignments", "warp_tiltseries/tiltstack/",
-        "--alignment_angpix", str(cfg.angpix)
+        "--alignment_angpix", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
     ]
-    with open("logs/import_align.log", "w") as log_file:
-        subprocess.run(cmd_import_align, check=True, stdout=log_file, stderr=subprocess.STDOUT)
+    run_command(cmd_import_align, logs_dir / "import_align.log")
 
     logging.info("Checking defocus handedness...")
     cmd_hand_check = [
@@ -211,19 +192,16 @@ def run_postprocess():
         "--check"
     ]
     result = subprocess.run(cmd_hand_check, check=True, capture_output=True, text=True)
-    with open("logs/handness.log", "w") as log_file:
-        log_file.write(result.stdout)
+    (logs_dir / "handness.log").write_text(result.stdout)
     
-    handness = result.stdout.strip().split("'")[-2]
-    if handness != "no flip":
+    if "no flip" not in result.stdout:
         logging.info("Flipping tomograms...")
         cmd_hand_flip = [
             "WarpTools", "ts_defocus_hand",
             "--settings", "warp_tiltseries.settings",
             "--set_flip"
         ]
-        with open("logs/flipped.log", "w") as log_file:
-            subprocess.run(cmd_hand_flip, check=True, stdout=log_file, stderr=subprocess.STDOUT)
+        run_command(cmd_hand_flip, logs_dir / "flipped.log")
     else:
         logging.info("No need to flip tomograms.")
 
@@ -236,91 +214,81 @@ def run_postprocess():
         "--device_list", str(cfg.gpu_devices[0]),
         "--perdevice", str(cfg.jobs_per_gpu)
     ]
-    with open("logs/tomo_ctf.log", "w") as log_file:
-        subprocess.run(cmd_ts_ctf, check=True, stdout=log_file, stderr=subprocess.STDOUT)
+    run_command(cmd_ts_ctf, logs_dir / "tomo_ctf.log")
 
+    # --- XML Parsing with isolated logging ---
     logging.info("Parsing XML files to remove bad tilts...")
-    xml_backup_dir = "warp_tiltseries/tiltstack/xml_backup"
-    if not os.path.exists(xml_backup_dir):
-        os.makedirs(xml_backup_dir)
-        for xml_file in glob.glob("warp_tiltseries/*.xml"):
-            shutil.copy(xml_file, os.path.join(xml_backup_dir, os.path.basename(xml_file)))
-    else:
-        for xml_file in glob.glob(os.path.join(xml_backup_dir, "*.xml")):
-            shutil.copy(xml_file, os.path.join("warp_tiltseries", os.path.basename(xml_file)))
-    
-    original_dir = os.getcwd()
-    script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'xml_parser.py')
-    log_path = os.path.join(os.getcwd(), 'logs', 'xml_parsing.log')
-    
-    original_dir = os.getcwd()
-    xml_dir = os.path.join(original_dir, "warp_tiltseries", "tiltstack")
+    xml_log_path = logs_dir / 'xml_parsing.log'
+    xml_handler = logging.FileHandler(xml_log_path, mode='w')
+    xml_handler.setFormatter(logging.getLogger().handlers[0].formatter) # Use the same formatter as the main logger
 
-    try:
-        logging.info(f"Changing directory to {xml_dir} to run XML parsing script.")
-        os.chdir(xml_dir)
+    xml_logger = logging.getLogger("xml_updater")
+    xml_logger.addHandler(xml_handler)
+    xml_logger.propagate = False # Prevent messages from reaching the root logger
+
+    warp_tiltseries_dir = Path("warp_tiltseries")
+    xml_backup_dir = warp_tiltseries_dir / "xml_backup"
+    xml_backup_dir.mkdir(exist_ok=True)
+    
+    for xml_file in warp_tiltseries_dir.glob("*.xml"):
+        if not (xml_backup_dir / xml_file.name).exists():
+            shutil.copy(xml_file, xml_backup_dir / xml_file.name)
+    
+    for xml_file in xml_backup_dir.glob("*.xml"):
+        shutil.copy(xml_file, warp_tiltseries_dir / xml_file.name)
+    
+    update_xml_files_from_com(warp_tiltseries_dir)
+    
+    # Clean up the handler and restore propagation
+    xml_logger.removeHandler(xml_handler)
+    xml_logger.propagate = True
+    xml_handler.close()
+    logging.info(f"XML parsing logs saved to {xml_log_path}")
+
+    # --- Deconvolution with non-verbose logging ---
+    xml_files_to_process = list(warp_tiltseries_dir.glob("*.xml"))
+    logging.info(f"Applying deconvolution for {len(xml_files_to_process)} tomograms...")
+    tomogram_logs_dir = logs_dir / 'tomograms'
+
+    for xml_file in xml_files_to_process:
+        tomo_name = xml_file.stem
+        defocus = ""
+        with xml_file.open("r") as f:
+            for line in f:
+                if 'Defocus" Val' in line:
+                    defocus = line.split('"')[3]
+                    break
         
-        with open(log_path, 'w') as log_file:
-            subprocess.run(
-                [sys.executable, script_path], 
-                check=True, 
-                stdout=log_file, 
-                stderr=subprocess.STDOUT
-            )
+        if not defocus:
+            logging.warning(f"Defocus not found for {tomo_name}, skipping deconvolution.")
+            continue
+        
+        tomo_dir = warp_tiltseries_dir / "tiltstack" / tomo_name
+        rec_file = f"{tomo_name}_rot_flipz.mrc"
+        mrc_file = f"{tomo_name}_rot_flipz_dev.mrc"
 
-    except subprocess.CalledProcessError as e:
-        logging.error(f"XML parsing script failed with exit code {e.returncode}.")
-        logging.error(f"Check the log for details: {log_path}")
-    except FileNotFoundError:
-        logging.error(f"Could not find the XML parsing script at {script_path}")
-    finally:
-        logging.info(f"Returning to directory: {original_dir}")
-        os.chdir(original_dir)
+        if not (tomo_dir / rec_file).exists():
+            logging.warning(f"Input file not found, skipping deconvolution for {tomo_name}: {tomo_dir/rec_file}")
+            continue
+        
+        command_string = (
+            f"module unload imod; "
+            f"module load imod/5.0.1-beta; "
+            f"reducefiltvol -i {rec_file} -o {mrc_file} -dec 0.5 -def {defocus}"
+        )
+        
+        deconv_log_dir = tomogram_logs_dir / tomo_name
+        deconv_log_dir.mkdir(parents=True, exist_ok=True)
+        run_command(
+            [command_string],
+            deconv_log_dir / "deconvolution.log",
+            cwd=tomo_dir,
+            shell=True,
+            verbose=False  # Make this call non-verbose
+        )
 
-    logging.info("Applying deconvolution...")
-    with open("logs/deconv.log", "w") as log_file:
-        for xml_file in glob.glob("warp_tiltseries/*.xml"):
-            tomo_name = os.path.basename(xml_file).split('.')[0]
-            defocus = ""
-            with open(xml_file, "r") as f:
-                for line in f:
-                    if 'Defocus" Val' in line:
-                        defocus = line.split('"')[3]
-                        break
-            
-            if not defocus:
-                logging.warning(f"Defocus not found for {tomo_name}, skipping deconvolution.")
-                continue
-            
-            tomo_dir = f"warp_tiltseries/tiltstack/{tomo_name}"
-            rec_file = f"{tomo_name}_rot_flipz.mrc"
-            mrc_file = f"{tomo_name}_rot_flipz_dev.mrc"
-
-            rec_file_full_path = os.path.join(tomo_dir, rec_file)
-            if not os.path.exists(rec_file_full_path):
-                logging.warning(f"Input file not found, skipping deconvolution for {tomo_name}: {rec_file_full_path}")
-                continue
-            
-            command_string = (
-                "module unload imod; "
-                "module load imod/5.0.1-beta; "
-                "reducefiltvol "
-                f"-i {rec_file} "
-                f"-o {mrc_file} "
-                "-dec 0.5 "
-                f"-def {defocus}"
-            )
-            
-            try:
-                os.chdir(tomo_dir)
-                subprocess.run(command_string, shell=True, check=True, stdout=log_file, stderr=subprocess.STDOUT)
-            except subprocess.CalledProcessError as e:
-                logging.error(f"Deconvolution command failed for {tomo_name} with exit code {e.returncode}. See logs/deconv.log for details.")
-            finally:
-                os.chdir(original_dir)
-
-            for f in glob.glob(os.path.join(tomo_dir, "*~")):
-                os.remove(f)
+        for f in tomo_dir.glob("*~"):
+            f.unlink()
 
     logging.info("Post-processing stage completed.")
 
@@ -336,17 +304,16 @@ def main():
     )
     args = parser.parse_args()
 
-    original_dir = os.getcwd()
-    dataset_dir = os.path.join(original_dir, cfg.dataset_name)
+    original_dir = Path.cwd()
+    dataset_dir = original_dir / cfg.dataset_name
 
     try:
-        if not os.path.exists(dataset_dir):
-            os.makedirs(dataset_dir)
-        os.chdir(dataset_dir)
+        dataset_dir.mkdir(exist_ok=True)
+        os.chdir(dataset_dir) # Use chdir once at the start for context
 
-        logs_dir = "logs"
-        os.makedirs(logs_dir, exist_ok=True)
-        log_file_path = os.path.join(logs_dir, "pipeline.log")
+        logs_dir = Path("logs")
+        logs_dir.mkdir(exist_ok=True)
+        log_file_path = logs_dir / "pipeline.log"
 
         logging.basicConfig(
             level=logging.INFO,
@@ -358,16 +325,16 @@ def main():
         )
         
         logging.info(f"Changing working directory to {dataset_dir}")
-        logging.info(f"Main log file for this run is: {os.path.abspath(log_file_path)}")
+        logging.info(f"Main log file for this run is: {log_file_path.resolve()}")
 
         if args.stage in ['all', 'preprocess']:
-            run_preprocess()
+            run_preprocess(logs_dir)
         if args.stage in ['all', 'etomo']:
-            run_builtin_etomo()
+            run_builtin_etomo(logs_dir)
         if args.stage in ['all', 'optimize']:
-            optimize_etomo()
+            optimize_etomo(logs_dir)
         if args.stage in ['all', 'postprocess']:
-            run_postprocess()
+            run_postprocess(logs_dir)
 
     finally:
         logging.info(f"Returning to original directory: {original_dir}")
