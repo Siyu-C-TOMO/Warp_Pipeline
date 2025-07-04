@@ -11,7 +11,7 @@ from pathlib import Path
 import config as cfg
 from pipeline_utils import run_command, update_xml_files_from_com, reorganize_falcon4_data
 
-def run_preprocess(logs_dir: Path):
+def run_preprocess(logs_dir: Path, params: dict):
     """Runs the preprocessing stage."""
     logging.info("Starting preprocessing stage...")
     
@@ -43,12 +43,12 @@ def run_preprocess(logs_dir: Path):
         "--folder_data", "frames",
         "--folder_processing", "warp_frameseries",
         "--output", "warp_frameseries.settings",
-        "--extension", "*.eer",
+        "--extension", params["extension"],
         "--angpix", str(cfg.angpix),
         "--exposure", str(cfg.dose),
         "--gain_path", str(gain_ref_link),
-        "--eer_ngroups", str(cfg.eer_ngroups)
     ]
+    cmd_frame_settings.extend(params["extra_create_args"])
     run_command(cmd_frame_settings, logs_dir / "frame_settings.log")
 
     logging.info("Creating tilt series settings...")
@@ -62,7 +62,7 @@ def run_preprocess(logs_dir: Path):
         "--angpix", str(cfg.angpix),
         "--gain_path", str(gain_ref_link),
         "--exposure", str(cfg.dose),
-        "--tomo_dimensions", f"{cfg.original_x_y_size[0]}x{cfg.original_x_y_size[1]}x{cfg.thickness_pxl}"
+        "--tomo_dimensions", f"{params['original_x_y_size'][0]}x{params['original_x_y_size'][1]}x{cfg.thickness_pxl}"
     ]
     run_command(cmd_tilt_settings, logs_dir / "tilt_settings.log")
 
@@ -70,7 +70,7 @@ def run_preprocess(logs_dir: Path):
     cmd_motion_ctf = [
         "WarpTools", "fs_motion_and_ctf",
         "--settings", "warp_frameseries.settings",
-        "--m_grid", f"1x1x{cfg.eer_ngroups}",
+        "--m_grid", f"1x1x{params['m_grid_frames']}",
         "--c_grid", "2x2x1",
         "--c_range_max", "7",
         "--c_defocus_max", "8",
@@ -97,6 +97,7 @@ def run_preprocess(logs_dir: Path):
         "--frameseries", "warp_frameseries",
         "--tilt_exposure", str(cfg.dose),
         "--dont_invert",
+        "--override_axis", str(cfg.tilt_axis_angle),
         "--output", "tomostar"
     ]
     run_command(cmd_ts_import, logs_dir / "tomostar.log")
@@ -121,6 +122,7 @@ def run_builtin_etomo(logs_dir: Path):
         "--settings", "warp_tiltseries.settings",
         "--angpix", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
         "--initial_axis", str(cfg.tilt_axis_angle), 
+        "--do_axis_search",
         "--patch_size", "512",
         "--device_list", str(cfg.gpu_devices[0]),
         "--perdevice", str(cfg.jobs_per_gpu * 2)
@@ -337,7 +339,7 @@ def main():
                 sys.exit(1) 
                 
         if args.stage in ['all', 'preprocess']:
-            run_preprocess(logs_dir)
+            run_preprocess(logs_dir, cfg.pipeline_params)
         if args.stage in ['all', 'etomo']:
             run_builtin_etomo(logs_dir)
         if args.stage in ['all', 'optimize']:

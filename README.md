@@ -10,6 +10,8 @@ The pipeline has been refactored for clarity, robustness, and ease of maintenanc
 
 ### Key Features
 
+*   **Multi-Camera Support**: Seamlessly processes data from both **K3 (.tif)** and **Falcon4 (.eer)** cameras.
+*   **Centralized Configuration**: A single `config.py` file manages all parameters. Switching between camera types is as simple as changing one variable.
 *   **Simplified Execution**: A wrapper script handles environment module loading automatically.
 *   **Modular Architecture**: The code is organized into a main orchestrator, utility modules, and stage-specific scripts.
 *   **Automated Workflow**: Automates data linking and settings creation for Warp.
@@ -50,7 +52,12 @@ To get a local copy up and running, follow these simple steps.
 
 The main entry point for the pipeline is now the `run.sh` wrapper script. It automatically handles loading the necessary `warp` module before executing the pipeline.
 
-1.  **Configure the pipeline**: Edit the parameters in `config.py` to match your dataset and processing requirements.
+1.  **Configure the pipeline**: Edit the parameters in `config.py` to match your dataset and processing requirements. The most important setting is `camera_type`.
+
+    *   Set `camera_type = "K3"` for K3 data (`.tif` files).
+    *   Set `camera_type = "Falcon4"` for Falcon4 data (`.eer` files).
+
+    The script will automatically use the correct parameters based on this setting.
 
 2.  **Run the pipeline**: Execute the `run.sh` script from the `Warp_Pipeline` directory. You can run all stages or specific ones using the `--stage` argument.
 
