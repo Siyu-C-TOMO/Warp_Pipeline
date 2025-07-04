@@ -148,7 +148,7 @@ class eTomoOptimizer:
         
         lines_after_replacement = []
         for line in source_lines:
-            key = line.split('\t')[0].strip()
+            key = line.strip().split()[0] if line.strip() else ""
             if key in rules_to_process:
                 lines_after_replacement.append(f"{key}\t{rules_to_process[key]['value']}")
                 del rules_to_process[key]
@@ -163,7 +163,7 @@ class eTomoOptimizer:
             
             for line in lines_after_replacement:
                 lines_after_insertion.append(line)
-                current_line_key = line.split('\t')[0].strip()
+                current_line_key = line.strip().split()[0] if line.strip() else ""
                 
                 for key in list(keys_to_insert):
                     if modifications[key]['anchor'] == current_line_key:

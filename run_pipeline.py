@@ -222,11 +222,11 @@ def run_postprocess(logs_dir: Path):
     logging.info("Parsing XML files to remove bad tilts...")
     xml_log_path = logs_dir / 'xml_parsing.log'
     xml_handler = logging.FileHandler(xml_log_path, mode='w')
-    xml_handler.setFormatter(logging.getLogger().handlers[0].formatter) # Use the same formatter as the main logger
+    xml_handler.setFormatter(logging.getLogger().handlers[0].formatter)
 
     xml_logger = logging.getLogger("xml_updater")
     xml_logger.addHandler(xml_handler)
-    xml_logger.propagate = False # Prevent messages from reaching the root logger
+    xml_logger.propagate = False
 
     warp_tiltseries_dir = Path("warp_tiltseries")
     xml_backup_dir = warp_tiltseries_dir / "xml_backup"
@@ -382,7 +382,7 @@ def main():
         logging.info(f"Changing working directory to {dataset_dir}")
         logging.info(f"Main log file for this run is: {log_file_path.resolve()}")
 
-        if cfg.camera_type == "Falcon4":
+        if args.stage in ['all', 'preprocess'] and cfg.camera_type == "Falcon4":
             logging.info("Falcon4 camera type detected. Running data reorganization...")
             try:
                 reorganize_falcon4_data(cfg, logs_dir)
