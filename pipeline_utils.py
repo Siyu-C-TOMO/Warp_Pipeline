@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from typing import List, Tuple, Iterator, Dict, Optional
-import shutil
 
 # --- Data Reorganization ---
 
@@ -17,7 +16,8 @@ def reorganize_falcon4_data(config, logs_dir: Path):
 
     This function is designed to be run when `camera_type` is 'Falcon4'. It moves
     files from a temporary source location (`falcon4_source_dir`) to the final
-    data directory (`raw_directory`/`dataset_name`).
+    data directory (`raw_directory`/`dataset_name`). It uses batch `mv` commands
+    for performance.
 
     The logic is as follows:
     1. A 'frames' directory is created in the destination.
@@ -32,6 +32,7 @@ def reorganize_falcon4_data(config, logs_dir: Path):
     """
     source_dir = Path(config.falcon4_source_dir)
     dest_dir = Path(config.raw_directory) / config.dataset_name
+    reorg_log_path = logs_dir / "reorg.log"
 
     if not source_dir.is_dir():
         logging.error(f"Falcon4 source directory not found: {source_dir}")
@@ -41,9 +42,13 @@ def reorganize_falcon4_data(config, logs_dir: Path):
     frames_dir = dest_dir / "frames"
     frames_dir.mkdir(exist_ok=True)
 
-    logging.info("Starting Falcon4 data reorganization...")
+    logging.info("Starting Falcon4 data reorganization (optimized)...")
 
     gain_ref_name = Path(config.gain_ref).name
+    
+    to_frames = []
+    to_root_files = []
+    to_root_dirs = []
     
     counts = {
         'eer': 0,
@@ -54,33 +59,35 @@ def reorganize_falcon4_data(config, logs_dir: Path):
     }
 
     for item_path in list(source_dir.iterdir()):
-        try:
-            if item_path.is_file():
-                if item_path.name.endswith('.eer'):
-                    target_path = frames_dir / item_path.name
-                    shutil.move(str(item_path), str(target_path))
-                    counts['eer'] += 1
-                elif item_path.name.endswith('.eer.mdoc'):
-                    target_path = frames_dir / item_path.name
-                    shutil.move(str(item_path), str(target_path))
-                    counts['mdoc'] += 1
-                elif item_path.name == gain_ref_name:
-                    target_path = frames_dir / item_path.name
-                    shutil.move(str(item_path), str(target_path))
-                    counts['gain'] += 1
-                else:
-                    target_path = dest_dir / item_path.name
-                    shutil.move(str(item_path), str(target_path))
-                    counts['other_files'] += 1
-            elif item_path.is_dir():
-                target_path = dest_dir / item_path.name
-                shutil.move(str(item_path), str(target_path))
-                counts['dirs'] += 1
-        except shutil.Error as e:
-            logging.warning(f"Could not move {item_path.name}, it may already exist at destination. Error: {e}")
-        except Exception as e:
-            logging.error(f"An unexpected error occurred while moving {item_path.name}: {e}", exc_info=True)
+        if item_path.is_file():
+            if item_path.name.endswith('.eer'):
+                to_frames.append(str(item_path))
+                counts['eer'] += 1
+            elif item_path.name.endswith('.eer.mdoc'):
+                to_frames.append(str(item_path))
+                counts['mdoc'] += 1
+            elif item_path.name == gain_ref_name:
+                to_frames.append(str(item_path))
+                counts['gain'] += 1
+            else:
+                to_root_files.append(str(item_path))
+                counts['other_files'] += 1
+        elif item_path.is_dir():
+            to_root_dirs.append(str(item_path))
+            counts['dirs'] += 1
 
+    if to_frames:
+        cmd = ['mv', '-t', str(frames_dir)] + to_frames
+        run_command(cmd, reorg_log_path, verbose=False)
+    
+    if to_root_files:
+        cmd = ['mv', '-t', str(dest_dir)] + to_root_files
+        run_command(cmd, reorg_log_path, verbose=False)
+
+    if to_root_dirs:
+        cmd = ['mv', '-t', str(dest_dir)] + to_root_dirs
+        run_command(cmd, reorg_log_path, verbose=False)
+        
     logging.info("Reorganization Summary:")
     logging.info(f"  - Moved {counts['eer']} .eer files to frames/")
     logging.info(f"  - Moved {counts['mdoc']} .eer.mdoc files to frames/")
