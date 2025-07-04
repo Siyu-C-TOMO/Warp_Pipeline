@@ -294,13 +294,65 @@ def run_postprocess(logs_dir: Path):
 
     logging.info("Post-processing stage completed.")
 
+def run_reconstruction(logs_dir: Path):
+    """Runs the final reconstruction and packaging stage for Windows compatibility."""
+    logging.info("Starting final reconstruction and packaging stage...")
+
+    win_dir = Path("forWindows_frames")
+    win_dir.mkdir(exist_ok=True)
+    logging.info(f"{win_dir.resolve()} is ready for packaging.")
+
+    logging.info("Running WarpTools ts_reconstruct...")
+    env = os.environ.copy()
+    env['WARP_FORCE_MRC_FLOAT32'] = '1'
+
+    cmd_reconstruct = [
+        "WarpTools", "ts_reconstruct",
+        "--settings", "warp_tiltseries.settings",
+        "--angpix", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
+        "--device_list", str(cfg.gpu_devices[0]),
+        "--perdevice", str(cfg.jobs_per_gpu)
+    ]
+    run_command(cmd_reconstruct, logs_dir / "reconstruction.log", env=env)
+
+    logging.info(f"Linking result files into {win_dir}...")
+    
+    warp_frameseries_dir = Path("warp_frameseries")
+    warp_tiltseries_dir = Path("warp_tiltseries")
+    tomostar_dir = Path("tomostar")
+
+    link_pairs = {
+        "average": warp_frameseries_dir / "average",
+        "reconstruction": warp_tiltseries_dir / "reconstruction",
+    }
+    for link_name, target_path in link_pairs.items():
+        dest_link = win_dir / link_name
+        if not dest_link.exists() and target_path.exists():
+            # Create relative symlink
+            relative_target = os.path.relpath(target_path.resolve(), win_dir.resolve())
+            dest_link.symlink_to(relative_target)
+
+    for xml_file in warp_tiltseries_dir.glob("*.xml"):
+        dest_link = win_dir / xml_file.name
+        if not dest_link.exists():
+            relative_target = os.path.relpath(xml_file.resolve(), win_dir.resolve())
+            dest_link.symlink_to(relative_target)
+            
+    for star_file in tomostar_dir.glob("*.tomostar"):
+        dest_link = win_dir / star_file.name
+        if not dest_link.exists():
+            relative_target = os.path.relpath(star_file.resolve(), win_dir.resolve())
+            dest_link.symlink_to(relative_target)
+
+    logging.info("Reconstruction and packaging stage completed.")
+
 def main():
     """Main function to drive the pipeline."""
     parser = argparse.ArgumentParser(description="A flexible pipeline for cryo-ET data processing.")
     parser.add_argument(
         '--stage',
         type=str,
-        choices=['preprocess', 'etomo', 'optimize', 'postprocess', 'all'],
+        choices=['preprocess', 'etomo', 'optimize', 'postprocess', 'all', 'reconstruct'],
         default='all',
         help="Which stage of the pipeline to run."
     )
@@ -316,12 +368,13 @@ def main():
         logs_dir = Path("logs")
         logs_dir.mkdir(exist_ok=True)
         log_file_path = logs_dir / "pipeline.log"
+        log_mode = 'a' if args.stage == 'reconstruct' else 'w'
 
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler(log_file_path, mode='w'),
+                logging.FileHandler(log_file_path, mode=log_mode),
                 logging.StreamHandler(sys.stdout)
             ]
         )
@@ -346,6 +399,8 @@ def main():
             optimize_etomo(logs_dir)
         if args.stage in ['all', 'postprocess']:
             run_postprocess(logs_dir)
+        if args.stage == 'reconstruct':
+            run_reconstruction(logs_dir)
 
     finally:
         logging.info(f"Returning to original directory: {original_dir}")
