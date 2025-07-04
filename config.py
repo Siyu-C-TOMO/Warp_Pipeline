@@ -18,6 +18,10 @@ tilt_axis_angle = -94.881
 thickness_pxl = 3000
 camera_type = "Falcon4" # "K3" or "Falcon4"
 
+# --- Falcon4 Specific Settings ---
+# The source directory containing raw .eer and .eer.mdoc files
+falcon4_source_dir = "/data/Microscopy/titan2/Villa_20250624_110000_SYC"
+
 # --- Computing Resources ---
 gpu_devices = [2]
 jobs_per_gpu = 4

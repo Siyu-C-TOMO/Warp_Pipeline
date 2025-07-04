@@ -9,7 +9,7 @@ import shutil
 from pathlib import Path
 
 import config as cfg
-from pipeline_utils import run_command, update_xml_files_from_com
+from pipeline_utils import run_command, update_xml_files_from_com, reorganize_falcon4_data
 
 def run_preprocess(logs_dir: Path):
     """Runs the preprocessing stage."""
@@ -327,6 +327,15 @@ def main():
         logging.info(f"Changing working directory to {dataset_dir}")
         logging.info(f"Main log file for this run is: {log_file_path.resolve()}")
 
+        if cfg.camera_type == "Falcon4":
+            logging.info("Falcon4 camera type detected. Running data reorganization...")
+            try:
+                reorganize_falcon4_data(cfg, logs_dir)
+            except Exception as e:
+                logging.critical(f"Data reorganization failed: {e}", exc_info=True)
+                logging.critical("Cannot proceed with the pipeline. Please check the configuration and source directory.")
+                sys.exit(1) 
+                
         if args.stage in ['all', 'preprocess']:
             run_preprocess(logs_dir)
         if args.stage in ['all', 'etomo']:

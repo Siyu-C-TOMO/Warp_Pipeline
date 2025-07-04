@@ -7,6 +7,88 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from typing import List, Tuple, Iterator, Dict, Optional
+import shutil
+
+# --- Data Reorganization ---
+
+def reorganize_falcon4_data(config, logs_dir: Path):
+    """
+    Moves and organizes raw Falcon4 data from a source directory to the processing directory.
+
+    This function is designed to be run when `camera_type` is 'Falcon4'. It moves
+    files from a temporary source location (`falcon4_source_dir`) to the final
+    data directory (`raw_directory`/`dataset_name`).
+
+    The logic is as follows:
+    1. A 'frames' directory is created in the destination.
+    2. Files ending in .eer, .eer.mdoc, and the gain reference file are moved into
+       the 'frames' directory.
+    3. All other files and directories (e.g., 'mdocs' folder, 'nav.nav', 'atlas', etc.)
+       are moved to the root of the destination directory.
+
+    Args:
+        config: The configuration module object (e.g., config.py).
+        logs_dir: The path to the main logging directory for the run.
+    """
+    source_dir = Path(config.falcon4_source_dir)
+    dest_dir = Path(config.raw_directory) / config.dataset_name
+
+    if not source_dir.is_dir():
+        logging.error(f"Falcon4 source directory not found: {source_dir}")
+        raise FileNotFoundError(f"Source directory for reorganization does not exist: {source_dir}")
+
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    frames_dir = dest_dir / "frames"
+    frames_dir.mkdir(exist_ok=True)
+
+    logging.info("Starting Falcon4 data reorganization...")
+
+    gain_ref_name = Path(config.gain_ref).name
+    
+    counts = {
+        'eer': 0,
+        'mdoc': 0,
+        'gain': 0,
+        'other_files': 0,
+        'dirs': 0
+    }
+
+    for item_path in list(source_dir.iterdir()):
+        try:
+            if item_path.is_file():
+                if item_path.name.endswith('.eer'):
+                    target_path = frames_dir / item_path.name
+                    shutil.move(str(item_path), str(target_path))
+                    counts['eer'] += 1
+                elif item_path.name.endswith('.eer.mdoc'):
+                    target_path = frames_dir / item_path.name
+                    shutil.move(str(item_path), str(target_path))
+                    counts['mdoc'] += 1
+                elif item_path.name == gain_ref_name:
+                    target_path = frames_dir / item_path.name
+                    shutil.move(str(item_path), str(target_path))
+                    counts['gain'] += 1
+                else:
+                    target_path = dest_dir / item_path.name
+                    shutil.move(str(item_path), str(target_path))
+                    counts['other_files'] += 1
+            elif item_path.is_dir():
+                target_path = dest_dir / item_path.name
+                shutil.move(str(item_path), str(target_path))
+                counts['dirs'] += 1
+        except shutil.Error as e:
+            logging.warning(f"Could not move {item_path.name}, it may already exist at destination. Error: {e}")
+        except Exception as e:
+            logging.error(f"An unexpected error occurred while moving {item_path.name}: {e}", exc_info=True)
+
+    logging.info("Reorganization Summary:")
+    logging.info(f"  - Moved {counts['eer']} .eer files to frames/")
+    logging.info(f"  - Moved {counts['mdoc']} .eer.mdoc files to frames/")
+    if counts['gain'] > 0:
+        logging.info(f"  - Moved {counts['gain']} gain reference file(s) to frames/")
+    logging.info(f"  - Moved {counts['other_files']} other files and {counts['dirs']} directories to the destination root.")
+    logging.info("Falcon4 data reorganization completed.")
+
 
 # --- Custom Exceptions ---
 
