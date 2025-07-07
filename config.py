@@ -12,7 +12,7 @@ tomo_match_string = "L"
 # --- Key Acquisition Parameters ---
 angpix = 0.935
 dose = 5.172
-tilt_axis_angle = -94.881
+tilt_axis_angle = -94.88233
 thickness_pxl = 3000
 camera_type = "Falcon4" # Switch between "K3" or "Falcon4"
 

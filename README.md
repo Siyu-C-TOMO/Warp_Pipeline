@@ -45,12 +45,12 @@ To get a local copy up and running, follow these simple steps.
     ```
 4.  Make the run script executable (only needs to be done once)
     ```sh
-    chmod +x run.sh
+    chmod +x warp_wrapper.sh
     ```
 
 ## Usage
 
-The main entry point for the pipeline is now the `run.sh` wrapper script. It automatically handles loading the necessary `warp` module before executing the pipeline.
+The main entry point for the pipeline is now the `warp_wrapper.sh` wrapper script. It automatically handles loading the necessary `warp` module before executing the pipeline.
 
 1.  **Configure the pipeline**: Edit the parameters in `config.py` to match your dataset and processing requirements. The most important setting is `camera_type`.
 
@@ -63,10 +63,10 @@ The main entry point for the pipeline is now the `run.sh` wrapper script. It aut
 
     ```sh
     # Run the full pipeline from start to finish
-    ./run.sh --stage all
+    ./warp_wrapper.sh --stage all
 
     # Run only the post-processing stage
-    ./run.sh --stage postprocess
+    ./warp_wrapper.sh --stage postprocess
     ```
 
 ## Logging System
