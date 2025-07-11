@@ -79,7 +79,10 @@ class eTomoOptimizer:
             logger.propagate = False
         return logger
 
-    def _identify_outliers(self, df: pd.DataFrame, id_col: str, threshold_sd: float) -> List[Union[str, int]]:
+    def _identify_outliers(self, df: pd.DataFrame, 
+                           id_col: str, 
+                           threshold_sd: float,
+                           to_select: bool = False) -> List[Union[str, int]]:
         """Identifies outliers in a DataFrame based on the standard deviation of 'resid-nm'."""
         if df.empty or 'resid-nm' not in df.columns:
             return []
@@ -88,8 +91,12 @@ class eTomoOptimizer:
         std_dev = df['resid-nm'].std()
         threshold = (threshold_sd * std_dev) + mean
         
-        outliers_df = df[df['resid-nm'] > threshold]
-        return outliers_df[id_col].unique().tolist()
+        if to_select:
+            inliers_df = df[df['resid-nm'] <= threshold]
+            return inliers_df[id_col].unique().tolist()
+        else:
+            outliers_df = df[df['resid-nm'] > threshold]
+            return outliers_df[id_col].unique().tolist()
 
     def _analyze_alignment_logs(self) -> Tuple[List[str], List[int]]:
         """
@@ -99,30 +106,29 @@ class eTomoOptimizer:
         view_df, cont_df, bad_point_df = read_align_log(self.align_log_path)
 
         views_to_exclude = [str(int(v)) for v in self._identify_outliers(view_df, 'view', VIEW_THR_SD)]
-        contours_to_exclude = [int(c) for c in self._identify_outliers(cont_df, 'cont', CONTOUR_THR_SD)]
 
-        contours = bad_point_df['cont'].dropna()
-        if not contours.empty:
-            contours = contours[contours != contours.max()]
-        contours_to_exclude.extend(int(c) for c in contours if int(c) != 0)
-        contours_to_exclude = sorted(set(c for c in contours_to_exclude if c != 0))
+        contours_to_include = [int(c) for c in self._identify_outliers(cont_df, 'cont', CONTOUR_THR_SD, to_select=True)]
 
-        return views_to_exclude, contours_to_exclude
+        bad_contours = bad_point_df['cont'].dropna()
+        if not bad_contours.empty:
+            max_contour = bad_contours.max()
+            contours_to_remove_set = {int(c) for c in bad_contours if c != max_contour and int(c) != 0}
+            contours_to_include = [c for c in contours_to_include if c not in contours_to_remove_set]
 
-    def _prune_fiducial_model(self, contours_to_exclude: List[int]):
+        return views_to_exclude, contours_to_include
+
+    def _prune_fiducial_model(self, contours_to_include: List[int]):
         """
         Creates a new, pruned fiducial model if contours are excluded.
         This method has side effects: it backs up and overwrites the original .fid file.
         """
-        self.logger.info(f"Pruning {len(contours_to_exclude)} contours from fiducial model.")
-        
         fid_pt_path = self.ts_dir / f'{self.ts_name}_fid.pt'
         cmd = ['model2point', '-c', '-ob', '-inp', f'{self.ts_name}.fid', '-ou', str(fid_pt_path)]
         run_command(cmd, self.log_dir / 'log_model2point.log', cwd=self.ts_dir)
             
         fid_df = read_fiducial_file(fid_pt_path)
-        if contours_to_exclude:  
-            pruned_fid_df = fid_df[~fid_df['contour'].isin(contours_to_exclude)]
+        if contours_to_include:
+            pruned_fid_df = fid_df[fid_df['contour'].isin(contours_to_include)]
         else:
             pruned_fid_df = fid_df.copy()            
         pruned_fid_pt_path = self.ts_dir / f'{self.ts_name}_fidPrune.pt'
@@ -179,7 +185,7 @@ class eTomoOptimizer:
 
         dest_path.write_text('\n'.join(final_lines) + '\n')
 
-    def _create_com_files(self, views_to_exclude_str: str, realign_needed: bool):
+    def _create_com_files(self, views_to_exclude_str: str):
         """Creates the necessary .com files for IMOD using a unified update logic."""
         newst_mods = {
             'SizeToOutputInXandY': {
@@ -206,14 +212,13 @@ class eTomoOptimizer:
             }
         self._update_com_file(self.ts_dir / 'tilt.com', self.ts_dir / 'tilt_clean.com', tilt_mods)
 
-        if realign_needed:
-            align_mods = {}
-            if views_to_exclude_str != '0':
-                align_mods['ExcludeList'] = {
-                    'value': views_to_exclude_str,
-                    'anchor': 'LocalSkewDefaultGrouping'
-                }
-            self._update_com_file(self.ts_dir / 'align.com', self.ts_dir / 'align_clean.com', align_mods)
+        align_mods = {}
+        if views_to_exclude_str != '0':
+            align_mods['ExcludeList'] = {
+                'value': views_to_exclude_str,
+                'anchor': 'LocalSkewDefaultGrouping'
+            }
+        self._update_com_file(self.ts_dir / 'align.com', self.ts_dir / 'align_clean.com', align_mods)
 
     def _reconstruct(self):
         """Runs the reconstruction and finalization steps."""
@@ -250,24 +255,16 @@ class eTomoOptimizer:
             return f"FAILED {self.ts_name}: align.log not found."
 
         try:
-            self._pilot_alignment()
+            views_to_exclude, contours_to_include = self._analyze_alignment_logs()
 
-            views_to_exclude, contours_to_exclude = self._analyze_alignment_logs()
-            realign_needed = bool(views_to_exclude or contours_to_exclude)
-            
-            if realign_needed:
-                self.logger.info(f'Pruning: {len(views_to_exclude)} views and {len(contours_to_exclude)} contours to exclude.')
-                self._prune_fiducial_model(contours_to_exclude)
-            else:
-                self.logger.info("No new views or contours to exclude. Skipping re-alignment.")
-            
+            self.logger.info(f'Pruning: {len(views_to_exclude)} views to exclude and {len(contours_to_include)} contours to include.')
+            self._prune_fiducial_model(contours_to_include)
             views_to_exclude_str = ','.join(views_to_exclude) if views_to_exclude else '0'
-            self._create_com_files(views_to_exclude_str, realign_needed)
+            self._create_com_files(views_to_exclude_str)
 
-            if realign_needed:
-                self.logger.info('Running cleaned alignment...')
-                run_command(['submfg', 'align_clean.com'], self.log_dir / 'log_align.log', cwd=self.ts_dir)
-            
+            self.logger.info('Running cleaned alignment...')
+            run_command(['submfg', 'align_clean.com'], self.log_dir / 'log_align.log', cwd=self.ts_dir)
+
             self._reconstruct()
 
         except (LogParsingError, ValueError) as e:
