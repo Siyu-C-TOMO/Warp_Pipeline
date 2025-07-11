@@ -260,7 +260,8 @@ def parse_section(lines_iterator: Iterator[str], expected_tokens: List[str]) -> 
     for line in lines_iterator:
         if not line.strip():
             break
-        data_lines.append(line.split())
+        tokens = line.split()
+        data_lines.append(tokens[:len(header)])
         
     if not data_lines:
         logging.warning(f"Found header for {expected_tokens} but no data rows followed.")
@@ -281,8 +282,9 @@ def read_align_log(path_to_align_log: Path) -> Tuple[pd.DataFrame, pd.DataFrame]
 
     view_df = parse_section(iter(lines), ['view', 'rotation', 'tilt'])
     contour_df = parse_section(iter(lines), ['#', 'X', 'Y'])
-    
-    return view_df, contour_df
+    bad_point_df = parse_section(iter(lines), ['obj', 'cont', 'view'])
+
+    return view_df, contour_df, bad_point_df
 
 def read_fiducial_file(path_to_fiducial_file: Path) -> pd.DataFrame:
     """Reads a fiducial point file into a pandas DataFrame."""

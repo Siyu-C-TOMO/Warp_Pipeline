@@ -96,10 +96,14 @@ class eTomoOptimizer:
         Analyzes alignment logs to identify views and contours to exclude.
         Returns a tuple of (views_to_exclude, contours_to_exclude).
         """
-        view_df, contour_df = read_align_log(self.align_log_path)
+        view_df, _, bad_point_df = read_align_log(self.align_log_path)
 
         views_to_exclude = [str(int(v)) for v in self._identify_outliers(view_df, 'view', VIEW_THR_SD)]
-        contours_to_exclude = [int(c) for c in self._identify_outliers(contour_df, 'cont', CONTOUR_THR_SD)]
+        contours = bad_point_df['cont'].dropna()
+        if not contours.empty:
+            max_cont = contours.max()
+            contours = contours[contours != max_cont]
+        contours_to_exclude = sorted(set(int(c) for c in contours if int(c) != 0))
         
         return views_to_exclude, contours_to_exclude
 
