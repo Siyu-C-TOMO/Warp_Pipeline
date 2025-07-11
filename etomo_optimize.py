@@ -108,17 +108,17 @@ class eTomoOptimizer:
         Creates a new, pruned fiducial model if contours are excluded.
         This method has side effects: it backs up and overwrites the original .fid file.
         """
-        if not contours_to_exclude:
-            return
-
         self.logger.info(f"Pruning {len(contours_to_exclude)} contours from fiducial model.")
         
         fid_pt_path = self.ts_dir / f'{self.ts_name}_fid.pt'
         cmd = ['model2point', '-c', '-ob', '-inp', f'{self.ts_name}.fid', '-ou', str(fid_pt_path)]
         run_command(cmd, self.log_dir / 'log_model2point.log', cwd=self.ts_dir)
-        
+            
         fid_df = read_fiducial_file(fid_pt_path)
-        pruned_fid_df = fid_df[~fid_df['contour'].isin(contours_to_exclude)]
+        if contours_to_exclude:  
+            pruned_fid_df = fid_df[~fid_df['contour'].isin(contours_to_exclude)]
+        else:
+            pruned_fid_df = fid_df.copy()            
         pruned_fid_pt_path = self.ts_dir / f'{self.ts_name}_fidPrune.pt'
         
         output_df = pruned_fid_df[['object', 'contour', 'x', 'y', 'z']]
@@ -226,6 +226,13 @@ class eTomoOptimizer:
         else:
             self.logger.warning(f'{rec_file} does not exist. Cannot perform final rotation.')
 
+    def _pilot_alignment(self) -> None:
+        """Runs the pilot alignment step."""
+        self.logger.info('Running pilot alignment...')
+        self._prune_fiducial_model([])
+        run_command(['submfg', 'align.com'], self.log_dir / 'log_align.log', cwd=self.ts_dir)
+        self.logger.info('Pilot alignment completed.')
+
     def run(self) -> str:
         """Executes the full optimization pipeline for the tomogram."""
         if self.final_mrc_path.exists():
@@ -237,6 +244,8 @@ class eTomoOptimizer:
             return f"FAILED {self.ts_name}: align.log not found."
 
         try:
+            self._pilot_alignment()
+
             views_to_exclude, contours_to_exclude = self._analyze_alignment_logs()
             realign_needed = bool(views_to_exclude or contours_to_exclude)
             

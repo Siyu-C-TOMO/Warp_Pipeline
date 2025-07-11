@@ -2,11 +2,11 @@
 # ============ USER-EDITABLE SETTINGS ==============
 # ==================================================
 # --- General Settings ---
-dataset_name = "250624_Proj_titan2"
+dataset_name = "250708_iFLM_lamella"
 raw_directory = "/data/Microscopy/Titan/Siyu"
 frame_folder = "frames"
 mdoc_folder = "mdocs"
-gain_ref = "20250602_143520_EER_GainReference.gain"
+gain_ref = "20250708_105059_EER_GainReference.gain"
 tomo_match_string = "L"
 
 # --- Key Acquisition Parameters ---
@@ -18,7 +18,7 @@ camera_type = "Falcon4" # Switch between "K3" or "Falcon4"
 
 # --- Falcon4 Specific Settings ---
 # The source directory containing raw .eer and .eer.mdoc files
-falcon4_source_dir = "/data/Microscopy/titan2/Villa_20250624_110000_SYC"
+falcon4_source_dir = "/data/Microscopy/titan2/Villa_20250708_190000_SYC2"
 falcon4_eer_ngroups = 8
 
 # --- K3 Specific Settings ---

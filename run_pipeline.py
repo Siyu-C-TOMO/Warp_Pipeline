@@ -382,7 +382,7 @@ def main():
         logging.info(f"Changing working directory to {dataset_dir}")
         logging.info(f"Main log file for this run is: {log_file_path.resolve()}")
 
-        if args.stage in ['all', 'preprocess'] and cfg.camera_type == "Falcon4":
+        if args.stage in ['all', 'preprocess'] and cfg.camera_type == "Falcon44":
             logging.info("Falcon4 camera type detected. Running data reorganization...")
             try:
                 reorganize_falcon4_data(cfg, logs_dir)
