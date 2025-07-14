@@ -238,7 +238,8 @@ class eTomoOptimizer:
             self.logger.warning(f'{rec_file} does not exist. Cannot perform final rotation.')
 
     def _pilot_alignment(self) -> None:
-        """Runs the pilot alignment step."""
+        """Runs the pilot alignment step.
+        Back up method not being used right now"""
         self.logger.info('Running pilot alignment...')
         self._prune_fiducial_model([])
         run_command(['submfg', 'align.com'], self.log_dir / 'log_align.log', cwd=self.ts_dir)
