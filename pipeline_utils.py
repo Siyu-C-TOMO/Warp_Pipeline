@@ -34,9 +34,9 @@ def reorganize_falcon4_data(config, logs_dir: Path):
     dest_dir = Path(config.raw_directory) / config.dataset_name
     reorg_log_path = logs_dir / "reorg.log"
 
-    if not source_dir.is_dir():
-        logging.error(f"Falcon4 source directory not found: {source_dir}")
-        raise FileNotFoundError(f"Source directory for reorganization does not exist: {source_dir}")
+    if not source_dir.is_dir() or not any(source_dir.glob('*.eer')):
+        logging.info(f"Source directory '{source_dir}' has no .eer files or does not exist. Skipping reorganization.")
+        return
 
     dest_dir.mkdir(parents=True, exist_ok=True)
     frames_dir = dest_dir / "frames"

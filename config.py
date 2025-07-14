@@ -40,7 +40,7 @@ if camera_type == "K3":
     pipeline_params["extension"] = "*.tif"
     pipeline_params["m_grid_frames"] = k3_frame_num
     pipeline_params["original_x_y_size"] = (5760, 4092)
-    extra_create_args.append("--gain_flip_y")
+    extra_create_args.append("--gain_flip_x")
 
 elif camera_type == "Falcon4":
     pipeline_params["extension"] = "*.eer"

@@ -381,14 +381,14 @@ def main():
         logging.info(f"Changing working directory to {dataset_dir}")
         logging.info(f"Main log file for this run is: {log_file_path.resolve()}")
 
-        if args.stage in ['all', 'preprocess'] and cfg.camera_type == "Falcon44":
-            logging.info("Falcon4 camera type detected. Running data reorganization...")
+        if args.stage in ['all', 'preprocess'] and cfg.camera_type == "Falcon4":
+            logging.info("Falcon4 camera type detected. Checking if data reorganization is needed...")
             try:
                 reorganize_falcon4_data(cfg, logs_dir)
             except Exception as e:
                 logging.critical(f"Data reorganization failed: {e}", exc_info=True)
                 logging.critical("Cannot proceed with the pipeline. Please check the configuration and source directory.")
-                sys.exit(1) 
+                sys.exit(1)
                 
         if args.stage in ['all', 'preprocess']:
             run_preprocess(logs_dir, cfg.pipeline_params)
