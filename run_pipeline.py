@@ -122,7 +122,6 @@ def run_builtin_etomo(logs_dir: Path):
         "--settings", "warp_tiltseries.settings",
         "--angpix", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
         "--initial_axis", str(cfg.tilt_axis_angle), 
-        "--do_axis_search",
         "--patch_size", "512",
         "--device_list", str(cfg.gpu_devices[0]),
         "--perdevice", str(cfg.jobs_per_gpu * 2)

@@ -2,19 +2,19 @@
 # ============ USER-EDITABLE SETTINGS ==============
 # ==================================================
 # --- General Settings ---
-dataset_name = "20240201_nklusch_nvRNAP_KD_60mpi"
-raw_directory = "/data/Microscopy/Titan/Niklas"
+dataset_name = "250708_iFLM_lamella"
+raw_directory = "/data/Microscopy/Titan/Siyu"
 frame_folder = "frames"
-mdoc_folder = "pace"
-gain_ref = "CountRef_L6_G1_ts_001_001_000_-9.0.mrc"
-tomo_match_string = "L2_G1_ts_005"
+mdoc_folder = "mdocs"
+gain_ref = "20250708_105059_EER_GainReference.gain"
+tomo_match_string = "L"
 
 # --- Key Acquisition Parameters ---
-angpix = 1.635
-dose = 3.243
-tilt_axis_angle = -94.6
+angpix = 0.935
+dose = 5.172
+tilt_axis_angle = -94.88233
 thickness_pxl = 3000
-camera_type = "K3" # Switch between "K3" or "Falcon4"
+camera_type = "Falcon4" # Switch between "K3" or "Falcon4"
 
 # --- Falcon4 Specific Settings ---
 # The source directory containing raw .eer and .eer.mdoc files
