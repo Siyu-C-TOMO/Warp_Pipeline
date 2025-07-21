@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import List, Tuple, Iterator, Dict, Optional
+from typing import List, Tuple, Iterator, Dict, Optional, Union
 
 # --- Data Reorganization ---
 
@@ -106,7 +106,7 @@ class LogParsingError(Exception):
 # --- Command Execution ---
 
 def run_command(
-    command: List[str],
+    command: Union[List[str], str],
     log_path: Path,
     cwd: Optional[Path] = None,
     env: Optional[Dict[str, str]] = None,
@@ -126,12 +126,13 @@ def run_command(
     """
     log_path.parent.mkdir(parents=True, exist_ok=True)
     if verbose:
-        logging.info(f"Running command: {' '.join(command)}")
+        cmd_str = ' '.join(command) if isinstance(command, list) else command
+        logging.info(f"Running command: {cmd_str}")
         if cwd:
             logging.info(f"Working directory: {cwd}")
 
     try:
-        with open(log_path, 'w') as log_file:
+        with open(log_path, 'a') as log_file:
             subprocess.run(
                 command,
                 check=True,

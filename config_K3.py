@@ -2,19 +2,19 @@
 # ============ USER-EDITABLE SETTINGS ==============
 # ==================================================
 # --- General Settings ---
-dataset_name = "250708_iFLM_lamella"
-raw_directory = "/data/Microscopy/Titan/Siyu"
+dataset_name = "20230322_ZR_ChmA_KD_90mpi_Emily"
+raw_directory = "/data/Microscopy/Titan/Zaida"
 frame_folder = "frames"
-mdoc_folder = "mdocs"
-gain_ref = "20250708_105059_EER_GainReference.gain"
-tomo_match_string = "L"
+mdoc_folder = "PACE"
+gain_ref = "CountRef_G3_L1_ts_001_000_12.0.mrc"
+tomo_match_string = "G3_L1_ts_002"
 
 # --- Key Acquisition Parameters ---
-angpix = 0.935
-dose = 5.172
-tilt_axis_angle = -94.88233
+angpix = 3.335
+dose = 3.243
+tilt_axis_angle = -93.9
 thickness_pxl = 3000
-camera_type = "Falcon4" # Switch between "K3" or "Falcon4"
+camera_type = "K3" # Switch between "K3" or "Falcon4"
 
 # --- Falcon4 Specific Settings ---
 # The source directory containing raw .eer and .eer.mdoc files
@@ -40,7 +40,7 @@ if camera_type == "K3":
     pipeline_params["extension"] = "*.tif"
     pipeline_params["m_grid_frames"] = k3_frame_num
     pipeline_params["original_x_y_size"] = (5760, 4092)
-    extra_create_args.append("--gain_flip_y")
+    extra_create_args.append("--gain_flip_x")
 
 elif camera_type == "Falcon4":
     pipeline_params["extension"] = "*.eer"
@@ -54,7 +54,7 @@ else:
 pipeline_params["extra_create_args"] = extra_create_args
 
 # --- eTomo Binning Calculation ---
-FINAL_NEWSTACK_BIN = 8
+FINAL_NEWSTACK_BIN = 2
 final_x_size = pipeline_params["original_x_y_size"][0] // FINAL_NEWSTACK_BIN
 final_y_size = pipeline_params["original_x_y_size"][1] // FINAL_NEWSTACK_BIN
 
