@@ -28,6 +28,7 @@ def reconstruction(logs_dir: Path):
         "--angpix", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
         "--device_list", str(cfg.gpu_devices[0]),
         "--perdevice", str(cfg.jobs_per_gpu)
+        #"--input_data", "tomostar/L2_G1_ts_007.tomostar"
     ]
     run_command(cmd_reconstruct, logs_dir / "reconstruction.log", env=env)
 
