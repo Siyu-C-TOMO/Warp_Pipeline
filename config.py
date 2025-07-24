@@ -3,11 +3,13 @@
 # ==================================================
 # --- General Settings ---
 dataset_name = "250717_HSC_G2"
-raw_directory = "/data/Microscopy/Titan/Siyu"
+raw_directory = "/data/Microscopy/Titan/Siyu" 
+# Path to where you would like to save your raw data
+# Titan2 data will be moved there and there might be no copy of your raw data in the original place
 frame_folder = "frames"
-mdoc_folder = "mdocs"
+mdoc_folder = "maps"
 gain_ref = "20250714_111605_EER_GainReference.gain"
-tomo_match_string = "L"
+tomo_match_string = "L" 
 
 # --- Key Acquisition Parameters ---
 angpix = 0.935

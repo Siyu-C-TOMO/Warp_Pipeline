@@ -1,8 +1,19 @@
 #!/bin/bash
-# This is a wrapper script for batchruntomo to ensure IMOD_DIR is set.
+# This is a wrapper script for batchruntomo to ensure IMOD_DIR is set dynamically.
 
-# Set the IMOD_DIR environment variable explicitly
-export IMOD_DIR=/software/repo/all/imod/4.11.25
+IMOD_LOCATION=$(which imod)
+if [ -z "$IMOD_LOCATION" ]; then
+    echo "Error: 'imod' command not found in PATH." >&2
+    echo "Please ensure IMOD is installed and its bin directory is in your PATH." >&2
+    exit 1
+fi
 
-# Execute the real batchruntomo with all passed arguments
-/software/repo/all/imod/4.11.25/bin/batchruntomo "$@"
+IMOD_BIN_DIR=$(dirname "$IMOD_LOCATION")
+export IMOD_DIR=$(dirname "$IMOD_BIN_DIR")
+
+BATCHRUNTOMO_EXEC="$IMOD_DIR/bin/batchruntomo"
+if [ ! -x "$BATCHRUNTOMO_EXEC" ]; then
+    echo "Error: Could not find or execute batchruntomo at $BATCHRUNTOMO_EXEC" >&2
+    exit 1
+fi
+"$BATCHRUNTOMO_EXEC" "$@"

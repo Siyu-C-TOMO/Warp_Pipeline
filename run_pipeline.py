@@ -299,7 +299,7 @@ def main():
     parser.add_argument(
         '--stage',
         type=str,
-        choices=['preprocess', 'etomo', 'optimize', 'postprocess', 'all', 'reconstruct'],
+        choices=['preprocess', 'etomo', 'optimize', 'postprocess', 'all'],
         default='all',
         help="Which stage of the pipeline to run."
     )
@@ -315,13 +315,12 @@ def main():
         logs_dir = Path("logs")
         logs_dir.mkdir(exist_ok=True)
         log_file_path = logs_dir / "pipeline.log"
-        log_mode = 'a' if args.stage == 'reconstruct' else 'w'
 
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler(log_file_path, mode=log_mode),
+                logging.FileHandler(log_file_path),
                 logging.StreamHandler(sys.stdout)
             ]
         )
