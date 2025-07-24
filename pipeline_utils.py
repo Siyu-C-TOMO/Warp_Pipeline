@@ -296,3 +296,44 @@ def read_fiducial_file(path_to_fiducial_file: Path) -> pd.DataFrame:
         names=['object', 'contour', 'x', 'y', 'z'],
         engine='python'
     )
+
+# --- Patch Size Calculation ---
+
+def calculate_patch_size(config) -> int:
+    """
+    Calculates the optimal patch size for eTomo based on configuration.
+
+    If `use_dynamic_patch_size` is False, it returns `default_patch_size`.
+    Otherwise, it computes a target size in Angstroms based on the image's 
+    longest dimension, pixel size, and a division factor, then finds the 
+    closest match from a list of predefined possible sizes.
+
+    Args:
+        config: The configuration module object.
+
+    Returns:
+        The calculated patch size as an integer.
+    """
+    if not config.use_dynamic_patch_size:
+        logging.info(f"Dynamic patch size disabled. Using default: {config.default_patch_size}")
+        return config.default_patch_size
+
+    image_x, image_y = config.pipeline_params['original_x_y_size']
+    pixel_size = config.angpix
+    longest_dim_px = max(image_x, image_y)
+    longest_dim_angstrom = longest_dim_px * pixel_size
+    
+    target_size = longest_dim_angstrom / config.patch_size_division_factor
+    
+    possible_sizes = np.array(config.possible_patch_sizes)
+    closest_size_index = np.abs(possible_sizes - target_size).argmin()
+    final_patch_size = possible_sizes[closest_size_index]
+    
+    logging.info("Dynamic patch size enabled.")
+    logging.info(f"  - Longest image dimension: {longest_dim_px}px")
+    logging.info(f"  - Pixel size: {pixel_size} Å/px")
+    logging.info(f"  - Longest image dimension in Å: {longest_dim_angstrom:.2f} Å")
+    logging.info(f"  - Target patch size (~1/{config.patch_size_division_factor}): {target_size:.2f} Å")
+    logging.info(f"  - Selected patch size from list {config.possible_patch_sizes}: {final_patch_size}")
+    
+    return int(final_patch_size)

@@ -9,7 +9,7 @@ import shutil
 from pathlib import Path
 
 import config as cfg
-from pipeline_utils import run_command, update_xml_files_from_com, reorganize_falcon4_data
+from pipeline_utils import run_command, update_xml_files_from_com, reorganize_falcon4_data, calculate_patch_size
 
 def run_preprocess(logs_dir: Path, params: dict):
     """Runs the preprocessing stage."""
@@ -117,12 +117,14 @@ def run_builtin_etomo(logs_dir: Path):
     env = os.environ.copy()
     env['PATH'] = f"{wrapper_dir}{os.pathsep}{env.get('PATH', '')}"   
 
+    patch_size = calculate_patch_size(cfg)
+
     cmd_to_run = [
         "WarpTools", "ts_etomo_patches",
         "--settings", "warp_tiltseries.settings",
         "--angpix", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
         "--initial_axis", str(cfg.tilt_axis_angle), 
-        "--patch_size", "512",
+        "--patch_size", str(patch_size),
         "--device_list", str(cfg.gpu_devices[0]),
         "--perdevice", str(cfg.jobs_per_gpu * 2)
     ]

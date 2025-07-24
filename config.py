@@ -65,3 +65,9 @@ etomo_params = {
     "setupset.copyarg.rotation": tilt_axis_angle,    
     "comparam.newst.newstack.SizeToOutputInXandY": f"{final_x_size},{final_y_size}",
 }
+
+# --- eTomo Patch Size Settings ---
+use_dynamic_patch_size = False
+patch_size_division_factor = 8
+possible_patch_sizes = [256, 512, 1024, 2048]
+default_patch_size = 512
