@@ -2,18 +2,18 @@
 # ============ USER-EDITABLE SETTINGS ==============
 # ==================================================
 # --- General Settings ---
-dataset_name = "250717_HSC_G2"
-raw_directory = "/data/Microscopy/Titan/Siyu" 
+dataset_name = "20250719_WT_eVLP"
+raw_directory = "/data/Microscopy/Titan/Madeleine" 
 # Path to where you would like to save your raw data
 # Titan2 data will be moved there and there might be no copy of your raw data in the original place
 frame_folder = "frames"
-mdoc_folder = "maps"
+mdoc_folder = "targets"
 gain_ref = "20250714_111605_EER_GainReference.gain"
-tomo_match_string = "L" 
+tomo_match_string = "sq" 
 
 # --- Key Acquisition Parameters ---
-angpix = 0.935
-dose = 5.172
+angpix = 1.561
+dose = 4.447
 tilt_axis_angle = -94.88233
 thickness_pxl = 3000
 camera_type = "Falcon4" # Switch between "K3" or "Falcon4"
@@ -67,7 +67,7 @@ etomo_params = {
 }
 
 # --- eTomo Patch Size Settings ---
-use_dynamic_patch_size = False
+use_dynamic_patch_size = True
 patch_size_division_factor = 8
 possible_patch_sizes = [256, 512, 1024, 2048]
 default_patch_size = 512

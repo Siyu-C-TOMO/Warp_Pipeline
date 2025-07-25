@@ -1,19 +1,29 @@
 #!/bin/bash
-# This is a wrapper script for batchruntomo to ensure IMOD_DIR is set dynamically.
+# This is a wrapper script for batchruntomo.
+# It checks a list of known IMOD locations to find a valid one.
 
-IMOD_LOCATION=$(which imod)
-if [ -z "$IMOD_LOCATION" ]; then
-    echo "Error: 'imod' command not found in PATH." >&2
-    echo "Please ensure IMOD is installed and its bin directory is in your PATH." >&2
+# List of potential IMOD base directories
+KNOWN_IMOD_DIRS=(
+    "/software/repo/all/imod/4.11.25"
+    "/data/software/repo/imod/4.11.25"
+)
+
+FOUND_IMOD_DIR=""
+
+# Loop through known directories to find a valid IMOD installation
+for dir in "${KNOWN_IMOD_DIRS[@]}"; do
+    if [ -x "${dir}/bin/batchruntomo" ]; then
+        FOUND_IMOD_DIR=$dir
+        break
+    fi
+done
+
+# If no valid directory was found, exit with an error
+if [ -z "$FOUND_IMOD_DIR" ]; then
+    echo "Error: Could not find a valid IMOD installation in any of the known locations." >&2
     exit 1
 fi
 
-IMOD_BIN_DIR=$(dirname "$IMOD_LOCATION")
-export IMOD_DIR=$(dirname "$IMOD_BIN_DIR")
-
-BATCHRUNTOMO_EXEC="$IMOD_DIR/bin/batchruntomo"
-if [ ! -x "$BATCHRUNTOMO_EXEC" ]; then
-    echo "Error: Could not find or execute batchruntomo at $BATCHRUNTOMO_EXEC" >&2
-    exit 1
-fi
-"$BATCHRUNTOMO_EXEC" "$@"
+# Export the found directory and execute batchruntomo
+export IMOD_DIR=$FOUND_IMOD_DIR
+"$FOUND_IMOD_DIR/bin/batchruntomo" "$@"
