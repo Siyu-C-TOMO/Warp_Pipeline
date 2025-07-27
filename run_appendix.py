@@ -10,7 +10,7 @@ import config as cfg
 
 from pipeline_utils import run_command
 
-def reconstruction(logs_dir: Path):
+def reconstruction(log_file_path: Path):
     """Runs the final reconstruction and packaging stage for Windows compatibility."""
     logging.info("Starting final reconstruction and packaging stage...")
 
@@ -30,7 +30,7 @@ def reconstruction(logs_dir: Path):
         "--perdevice", str(cfg.jobs_per_gpu)
         #"--input_data", "tomostar/L2_G1_ts_007.tomostar"
     ]
-    run_command(cmd_reconstruct, logs_dir / "reconstruction.log", env=env)
+    run_command(cmd_reconstruct, log_file_path, env=env)
 
     logging.info(f"Linking result files into {win_dir}...")
     
@@ -210,7 +210,7 @@ def main():
     parser.add_argument(
         '--stage',
         type=str,
-        choices=['isonet'],
+        choices=['isonet', 'cryolo', 'reconstruction'],
         help="Which stage of the pipeline to run."
     )
     args = parser.parse_args()
@@ -230,9 +230,10 @@ def main():
             level=logging.INFO,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler(log_file_path),
+                logging.FileHandler(log_file_path, mode='w'),
                 logging.StreamHandler(sys.stdout)
-            ]
+            ],
+            force=True
         )
         logging.info(f"Main log file for this run is: {log_file_path.resolve()}")
 
