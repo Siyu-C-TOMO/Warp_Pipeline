@@ -96,14 +96,13 @@ def isonet(log_file_path: Path):
         f"isonet.py prepare_star {tomo_folder} --output_star tomogram.star --pixel_size {pixel_size} --number_subtomos 40",
         "isonet.py make_mask tomogram.star --mask_folder mask --density_percentage 40 --std_percentage 40 --z_crop 0.14",
         "isonet.py extract tomogram.star --cube_size 64",
-        "isonet.py refine subtomo.star --gpuID 0,1,2,3,4,5 --iterations 30 --noise_level 0.1,0.15,0.2,0.25 --noise_start_iter 10,15,20,25",
-        "isonet.py predict tomogram.star ./results/model_iter30.h5 --gpuID 0,1,2,3,4,5 --cube_size 64 --crop_size 96",
+        "isonet.py refine subtomo.star --gpuID 0,1,2,3,4,5,6,7 --iterations 30 --noise_level 0.1,0.15,0.2,0.25 --noise_start_iter 10,15,20,25",
+        "isonet.py predict tomogram.star ./results/model_iter30.h5 --gpuID 0,1,2,3,4,5,6,7 --cube_size 64 --crop_size 96",
     ]
 
     for cmd in commands:
-        full_command = f"module load isonet; {cmd}"
-        logging.info(f"--- Starting ISONet step: {cmd.split()[1]} ---")
-        run_command(full_command, log_file_path, shell=True, cwd=isonet_dir)
+        logging.info(f"--- Starting ISONet step: {cmd.split()[0]} ---")
+        run_command(cmd, log_file_path, cwd=isonet_dir, module_load="isonet")
     
     logging.info("--- All ISONet steps completed successfully. ---")
 
@@ -111,7 +110,7 @@ def cryolo(log_file_path: Path):
     """Run the Cryolo stage of the pipeline."""
     cryolo_dir = Path("cryolo")
     if not cryolo_dir.exists():
-        logging.error(f"No cryolo directory. Run star-handler process-relion2cbox first.")
+        logging.error(f"No cryolo directory. Run star-handler process-relion2cryolo first.")
         sys.exit(1)
 
     cryolo_ad = "/software/repo/rhel9/cryolo/1.9.4/bin"
@@ -125,9 +124,9 @@ def cryolo(log_file_path: Path):
         f"{cmd_ini} predict -c 'config_cryolo.json' -w 'cryolo_model_fromRelion_expand10.h5' -i tomograms -o '{output_dir}' -t '{thre}' -g '1' -d '0' -pbs '3' --gpu_fraction '1.0' -nc '4' --norm_margin '0.0' -sm 'LINE_STRAIGHTNESS' -st '0.95' -sr '1.41' -ad '10' --directional_method 'PREDICTED' -mw '100' --tomogram -tsr '-1' -tmem '0' -mn3d '2' -tmin '{connect_min}' -twin '-1' -tedge '0.4' -tmerge '0.8'"
     ]
     for cmd in commands:
-        full_command = f"module load cryolo; {cmd}"
-        logging.info(f"--- Starting CryoLo step: {cmd.split()[4]} ---")
-        run_command(full_command, log_file_path, shell=True, cwd=cryolo_dir)
+        step_name = cmd.split()[2] 
+        logging.info(f"--- Starting CryoLo step: {step_name} ---")
+        run_command(cmd, log_file_path, cwd=cryolo_dir, module_load="cryolo")
 
     list_file = Path('ribo_list_final.txt')
     if not list_file.exists():
@@ -140,7 +139,7 @@ def cryolo(log_file_path: Path):
             logging.info(f"Processing tomogram: {tomo}")
 
             coords_file = f"COORDS/{tomo}.coords"
-            raw_star_file = f"STAR/{tomo}/particles_warp.star"
+            raw_star_file = f"STAR/{tomo}"
             (cryolo_dir / output_dir / "STAR" / tomo).mkdir(parents=True, exist_ok=True)
 
             cmd = [
@@ -148,9 +147,9 @@ def cryolo(log_file_path: Path):
                 "-i", coords_file, "-o", raw_star_file,
                 "--apix", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN)
             ]
-            run_command(cmd, log_file_path, shell=True, cwd=cryolo_dir / output_dir)
+            run_command(cmd, log_file_path, cwd=cryolo_dir / output_dir, module_load="cryolo")
 
-            input_star_path = cryolo_dir / output_dir / raw_star_file
+            input_star_path = cryolo_dir / output_dir / raw_star_file / "particles_warp.star"
             filtered_star_file = f"STAR/{tomo}.star"
             output_star_path = cryolo_dir / output_dir / filtered_star_file
             
@@ -196,12 +195,11 @@ def cryolo(log_file_path: Path):
         "--box", "72",
         "--diameter", "350",
         "--relative_output_paths",
-        "--device_list", str(cfg.gpu_devices[1]),
+        "--device_list", str(cfg.gpu_devices[0]),
         "--perdevice", str(cfg.jobs_per_gpu),
         "--3d"
-    ]    
-    full_command = f"module load warp/2.0.0dev31; {' '.join(cmd_export)}"
-    run_command(full_command, log_file_path, shell=True, env=env)
+    ]
+    run_command(cmd_export, log_file_path, env=env, module_load="warp/2.0.0dev31")
     logging.info("--- WarpTools ts_export_particles completed. ---")
 
 def main():

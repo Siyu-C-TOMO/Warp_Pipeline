@@ -6,7 +6,8 @@
 # Get the directory where this script is located to build a robust path
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 
-echo "Loading required module: warp/2.0.0dev31"
+echo "Loading required module: aretomo and warp/2.0.0dev31"
+module load aretomo
 module load warp/2.0.0dev31
 
 echo "Executing pipeline: run_pipeline.py"

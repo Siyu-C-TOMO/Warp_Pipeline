@@ -112,35 +112,53 @@ def run_command(
     env: Optional[Dict[str, str]] = None,
     shell: bool = False,
     verbose: bool = True,
+    module_load: Optional[Union[str, List[str]]] = None,
 ) -> None:
     """
     Runs a command, logs its output, and handles errors.
 
     Args:
-        command: The command to run as a list of strings.
+        command: The command to run as a list or a single string.
         log_path: Path to the log file for stdout and stderr.
         cwd: The working directory for the command. Defaults to None.
         env: Environment variables for the command. Defaults to None.
-        shell: Whether to use the shell. Defaults to False.
+        shell: Whether to use the shell. For complex commands or module loading,
+               this will be forced to True.
         verbose: If True, prints command info to the main logger.
+        module_load: A module or list of modules to load before running the command.
+                     e.g., 'cryolo' or ['module1', 'module2'].
     """
     log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    cmd_str = ' '.join(map(str, command)) if isinstance(command, list) else command
+
+    if module_load:
+        shell = True  # module command requires a shell
+        if isinstance(module_load, str):
+            modules = [module_load]
+        else:
+            modules = module_load
+        
+        load_prefix = '; '.join(f"module load {mod}" for mod in modules)
+        final_command = f"{load_prefix}; {cmd_str}"
+    else:
+        final_command = cmd_str
+
     if verbose:
-        cmd_str = ' '.join(command) if isinstance(command, list) else command
-        logging.info(f"Running command: {cmd_str}")
+        logging.info(f"Running command: {final_command}")
         if cwd:
             logging.info(f"Working directory: {cwd}")
 
     try:
         with open(log_path, 'a') as log_file:
             subprocess.run(
-                command,
+                final_command,
                 check=True,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
                 cwd=cwd,
                 env=env,
-                shell=shell
+                shell=shell,
             )
     except subprocess.CalledProcessError as e:
         logging.error(f"Command failed with exit code {e.returncode}.")
