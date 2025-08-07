@@ -130,42 +130,42 @@ def run_command(
     """
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    cmd_str = ' '.join(map(str, command)) if isinstance(command, list) else command
-
-    if module_load:
-        shell = True  # module command requires a shell
-        if isinstance(module_load, str):
-            modules = [module_load]
+    use_shell = shell or bool(module_load)
+    if use_shell:
+        cmd_str = ' '.join(map(str, command)) if isinstance(command, list) else command
+        if module_load:
+            modules = [module_load] if isinstance(module_load, str) else module_load
+            load_prefix = '; '.join(f"module load {mod}" for mod in modules)
+            executable_command = f"{load_prefix}; {cmd_str}"
         else:
-            modules = module_load
-        
-        load_prefix = '; '.join(f"module load {mod}" for mod in modules)
-        final_command = f"{load_prefix}; {cmd_str}"
+            executable_command = cmd_str
     else:
-        final_command = cmd_str
+        executable_command = command
 
     if verbose:
-        logging.info(f"Running command: {final_command}")
+        log_cmd_str = executable_command if isinstance(executable_command, str) else ' '.join(map(str, executable_command))
+        logging.info(f"Running command: {log_cmd_str}")
         if cwd:
             logging.info(f"Working directory: {cwd}")
 
     try:
         with open(log_path, 'a') as log_file:
             subprocess.run(
-                final_command,
+                executable_command,
                 check=True,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
                 cwd=cwd,
                 env=env,
-                shell=shell,
+                shell=use_shell,
             )
     except subprocess.CalledProcessError as e:
         logging.error(f"Command failed with exit code {e.returncode}.")
         logging.error(f"Check the log for details: {log_path.resolve()}")
         raise
     except FileNotFoundError:
-        logging.error(f"Command not found: {command[0]}. Ensure it is in the system's PATH.")
+        cmd_name = command[0] if isinstance(command, list) else command.split()[0]
+        logging.error(f"Command not found: {cmd_name}. Ensure it is in the system's PATH.")
         raise
 
 # --- XML Parsing (from xml_parser.py) ---

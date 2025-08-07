@@ -9,7 +9,7 @@ raw_directory = "/data/Microscopy/Titan/Siyu"
 frame_folder = "frames"
 mdoc_folder = "mdocs"
 gain_ref = "20250721_104451_EER_GainReference.gain"
-tomo_match_string = "L" 
+tomo_match_string = "L2" 
 
 # --- Key Acquisition Parameters ---
 angpix = 0.935

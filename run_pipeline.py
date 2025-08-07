@@ -11,18 +11,18 @@ from pathlib import Path
 import config as cfg
 from pipeline_utils import run_command, update_xml_files_from_com, reorganize_falcon4_data, calculate_patch_size
 
-def run_preprocess(logs_dir: Path, params: dict):
+def run_preprocess(dataset_dir: Path, logs_dir: Path, params: dict):
     """Runs the preprocessing stage."""
     logging.info("Starting preprocessing stage...")
     
     logging.info("Linking data files...")
-    Path("mdocs").mkdir(exist_ok=True)
-    frames_dir = Path("frames")
+    (dataset_dir / "mdocs").mkdir(exist_ok=True)
+    frames_dir = dataset_dir / "frames"
     frames_dir.mkdir(exist_ok=True)
     
     mdoc_source_path = Path(cfg.raw_directory) / cfg.dataset_name / cfg.mdoc_folder
     for mdoc_file in mdoc_source_path.glob(f"{cfg.tomo_match_string}*_ts_???.mrc.mdoc"):
-        dest_file = Path("mdocs") / mdoc_file.name.replace(".mrc.", ".")
+        dest_file = dataset_dir / "mdocs" / mdoc_file.name.replace(".mrc.", ".")
         if not dest_file.exists():
             dest_file.symlink_to(mdoc_file)
 
@@ -46,13 +46,13 @@ def run_preprocess(logs_dir: Path, params: dict):
         "--extension", params["extension"],
         "--angpix", str(cfg.angpix),
         "--exposure", str(cfg.dose),
-        "--gain_path", str(gain_ref_link),
+        "--gain_path", str(gain_ref_link.relative_to(dataset_dir)),
     ]
     cmd_frame_settings.extend(params["extra_create_args"])
-    run_command(cmd_frame_settings, logs_dir / "frame_settings.log")
+    run_command(cmd_frame_settings, logs_dir / "frame_settings.log", cwd=dataset_dir)
 
     logging.info("Creating tilt series settings...")
-    Path("tomostar").mkdir(exist_ok=True)
+    (dataset_dir / "tomostar").mkdir(exist_ok=True)
     cmd_tilt_settings = [
         "WarpTools", "create_settings",
         "--output", "warp_tiltseries.settings",
@@ -60,11 +60,11 @@ def run_preprocess(logs_dir: Path, params: dict):
         "--folder_data", "tomostar",
         "--extension", "*.tomostar",
         "--angpix", str(cfg.angpix),
-        "--gain_path", str(gain_ref_link),
+        "--gain_path", str(gain_ref_link.relative_to(dataset_dir)),
         "--exposure", str(cfg.dose),
         "--tomo_dimensions", f"{params['original_x_y_size'][0]}x{params['original_x_y_size'][1]}x{cfg.thickness_pxl}"
     ]
-    run_command(cmd_tilt_settings, logs_dir / "tilt_settings.log")
+    run_command(cmd_tilt_settings, logs_dir / "tilt_settings.log", cwd=dataset_dir)
 
     logging.info("Running frame series motion and CTF estimation...")
     cmd_motion_ctf = [
@@ -80,7 +80,7 @@ def run_preprocess(logs_dir: Path, params: dict):
         "--device_list", str(cfg.gpu_devices[0]),
         "--perdevice", str(cfg.jobs_per_gpu * 2)
     ]
-    run_command(cmd_motion_ctf, logs_dir / "motion_ctf.log")
+    run_command(cmd_motion_ctf, logs_dir / "motion_ctf.log", cwd=dataset_dir)
 
     logging.info("Plotting histograms of 2D processing metrics...")
     cmd_histograms = [
@@ -88,7 +88,7 @@ def run_preprocess(logs_dir: Path, params: dict):
         "--settings", "warp_frameseries.settings",
         "--histograms"
     ]
-    run_command(cmd_histograms, logs_dir / "histograms.log")
+    run_command(cmd_histograms, logs_dir / "histograms.log", cwd=dataset_dir)
 
     logging.info("Importing tilt series metadata...")
     cmd_ts_import = [
@@ -100,11 +100,11 @@ def run_preprocess(logs_dir: Path, params: dict):
         "--override_axis", str(cfg.tilt_axis_angle),
         "--output", "tomostar"
     ]
-    run_command(cmd_ts_import, logs_dir / "tomostar.log")
+    run_command(cmd_ts_import, logs_dir / "tomostar.log", cwd=dataset_dir)
 
     logging.info("Preprocessing stage completed.")
 
-def run_builtin_etomo(logs_dir: Path):
+def run_builtin_etomo(dataset_dir: Path, logs_dir: Path):
     """Runs the eTomo alignment stage with a patched environment."""
     logging.info("Starting Patched eTomo alignment stage...")
 
@@ -124,19 +124,21 @@ def run_builtin_etomo(logs_dir: Path):
         "--settings", "warp_tiltseries.settings",
         "--angpix", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
         "--initial_axis", str(cfg.tilt_axis_angle), 
+        "--do_axis_search",
+        "--input_data", "tomostar/L2_G1_ts_003.tomostar",
         "--patch_size", str(patch_size),
         "--device_list", str(cfg.gpu_devices[0]),
         "--perdevice", str(cfg.jobs_per_gpu * 2)
     ]
-    run_command(cmd_to_run, logs_dir / "etomo_patches.log", env=env)
+    run_command(cmd_to_run, logs_dir / "etomo_patches.log", cwd=dataset_dir, env=env)
 
     logging.info("Patched eTomo test stage completed.")
 
-def optimize_etomo(logs_dir: Path):
+def optimize_etomo(dataset_dir: Path, logs_dir: Path):
     """Runs the customized eTomo optimization stage."""
     logging.info("Starting eTomo optimization stage...")
     
-    etomo_dir = Path.cwd() / "warp_tiltseries" / "tiltstack"
+    etomo_dir = dataset_dir / "warp_tiltseries" / "tiltstack"
     if not etomo_dir.is_dir():
         logging.error(f"eTomo directory not found at: {etomo_dir}")
         logging.error("Please ensure the preprocessing stage was run successfully.")
@@ -159,7 +161,7 @@ def optimize_etomo(logs_dir: Path):
         
     logging.info("eTomo optimization stage completed.")
 
-def run_postprocess(logs_dir: Path):
+def run_postprocess(dataset_dir: Path, logs_dir: Path):
     """Runs the post-processing stage."""
     logging.info("Starting post-processing stage...")
     
@@ -169,7 +171,7 @@ def run_postprocess(logs_dir: Path):
         rmd_error_log.rename(str(rmd_error_log) + "~")
     
     with rmd_error_log.open("w") as f:
-        for d in Path("warp_tiltseries/tiltstack").glob("L*"):
+        for d in (dataset_dir / "warp_tiltseries/tiltstack").glob("L*"):
             align_log = d / "align_clean.log"
             if align_log.exists():
                 with align_log.open("r") as log_file:
@@ -186,7 +188,7 @@ def run_postprocess(logs_dir: Path):
         "--alignments", "warp_tiltseries/tiltstack/",
         "--alignment_angpix", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
     ]
-    run_command(cmd_import_align, logs_dir / "import_align.log")
+    run_command(cmd_import_align, logs_dir / "import_align.log", cwd=dataset_dir)
 
     logging.info("Checking defocus handedness...")
     cmd_hand_check = [
@@ -194,7 +196,7 @@ def run_postprocess(logs_dir: Path):
         "--settings", "warp_tiltseries.settings",
         "--check"
     ]
-    result = subprocess.run(cmd_hand_check, check=True, capture_output=True, text=True)
+    result = subprocess.run(cmd_hand_check, check=True, capture_output=True, text=True, cwd=dataset_dir)
     (logs_dir / "handness.log").write_text(result.stdout)
     
     if "no flip" not in result.stdout:
@@ -204,7 +206,7 @@ def run_postprocess(logs_dir: Path):
             "--settings", "warp_tiltseries.settings",
             "--set_flip"
         ]
-        run_command(cmd_hand_flip, logs_dir / "flipped.log")
+        run_command(cmd_hand_flip, logs_dir / "flipped.log", cwd=dataset_dir)
     else:
         logging.info("No need to flip tomograms.")
 
@@ -217,7 +219,7 @@ def run_postprocess(logs_dir: Path):
         "--device_list", str(cfg.gpu_devices[0]),
         "--perdevice", str(cfg.jobs_per_gpu)
     ]
-    run_command(cmd_ts_ctf, logs_dir / "tomo_ctf.log")
+    run_command(cmd_ts_ctf, logs_dir / "tomo_ctf.log", cwd=dataset_dir)
 
     # --- XML Parsing with isolated logging ---
     logging.info("Parsing XML files to remove bad tilts...")
@@ -229,7 +231,7 @@ def run_postprocess(logs_dir: Path):
     xml_logger.addHandler(xml_handler)
     xml_logger.propagate = False
 
-    warp_tiltseries_dir = Path("warp_tiltseries")
+    warp_tiltseries_dir = dataset_dir / "warp_tiltseries"
     xml_backup_dir = warp_tiltseries_dir / "xml_backup"
     xml_backup_dir.mkdir(exist_ok=True)
     
@@ -307,51 +309,45 @@ def main():
     )
     args = parser.parse_args()
 
-    original_dir = Path.cwd()
-    dataset_dir = original_dir / cfg.dataset_name
+    base_dir = Path.cwd()
+    dataset_dir = base_dir / cfg.dataset_name
+    dataset_dir.mkdir(exist_ok=True)
 
-    try:
-        dataset_dir.mkdir(exist_ok=True)
-        os.chdir(dataset_dir) # Use chdir once at the start for context
+    logs_dir = dataset_dir / "logs"
+    logs_dir.mkdir(exist_ok=True)
+    log_file_path = logs_dir / "pipeline.log"
 
-        logs_dir = Path("logs")
-        logs_dir.mkdir(exist_ok=True)
-        log_file_path = logs_dir / "pipeline.log"
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file_path),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    
+    logging.info(f"Processing will run in: {dataset_dir}")
+    logging.info(f"Main log file for this run is: {log_file_path.resolve()}")
 
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(log_file_path),
-                logging.StreamHandler(sys.stdout)
-            ]
-        )
-        
-        logging.info(f"Changing working directory to {dataset_dir}")
-        logging.info(f"Main log file for this run is: {log_file_path.resolve()}")
+    if args.stage in ['all', 'preprocess'] and cfg.camera_type == "Falcon4":
+        logging.info("Falcon4 camera type detected. Checking if data reorganization is needed...")
+        try:
+            reorganize_falcon4_data(cfg, logs_dir)
+        except Exception as e:
+            logging.critical(f"Data reorganization failed: {e}", exc_info=True)
+            logging.critical("Cannot proceed with the pipeline. Please check the configuration and source directory.")
+            sys.exit(1)
+            
+    if args.stage in ['all', 'preprocess']:
+        run_preprocess(dataset_dir, logs_dir, cfg.pipeline_params)
+    if args.stage in ['all', 'etomo']:
+        run_builtin_etomo(dataset_dir, logs_dir)
+    if args.stage in ['all', 'optimize']:
+        optimize_etomo(dataset_dir, logs_dir)
+    if args.stage in ['all', 'postprocess']:
+        run_postprocess(dataset_dir, logs_dir)
 
-        if args.stage in ['all', 'preprocess'] and cfg.camera_type == "Falcon4":
-            logging.info("Falcon4 camera type detected. Checking if data reorganization is needed...")
-            try:
-                reorganize_falcon4_data(cfg, logs_dir)
-            except Exception as e:
-                logging.critical(f"Data reorganization failed: {e}", exc_info=True)
-                logging.critical("Cannot proceed with the pipeline. Please check the configuration and source directory.")
-                sys.exit(1)
-                
-        if args.stage in ['all', 'preprocess']:
-            run_preprocess(logs_dir, cfg.pipeline_params)
-        if args.stage in ['all', 'etomo']:
-            run_builtin_etomo(logs_dir)
-        if args.stage in ['all', 'optimize']:
-            optimize_etomo(logs_dir)
-        if args.stage in ['all', 'postprocess']:
-            run_postprocess(logs_dir)
-
-    finally:
-        logging.info(f"Returning to original directory: {original_dir}")
-        os.chdir(original_dir)
-        logging.info("Pipeline execution finished.")
+    logging.info("Pipeline execution finished.")
 
 if __name__ == "__main__":
     main()
