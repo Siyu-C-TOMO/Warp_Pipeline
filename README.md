@@ -39,6 +39,7 @@ This project provides a powerful, automated pipeline for cryo-ET data processing
 *   **Automated Workflow**: Integrates Warp and a custom eTomo optimization routine to streamline processing.
 *   **Centralized Configuration**: Manages all parameters in a single `config.py` file.
 *   **Advanced eTomo Optimization**: A parallelized stage identifies and excludes high-error views and fiducials to improve alignment.
+*   **Flexible Gain Handling**: Automatically finds the gain reference if not explicitly configured.
 *   **Structured Logging**: Generates organized logs for easy tracking and debugging.
 
 ### Workflow Diagram
@@ -163,8 +164,8 @@ All user-editable settings are located at the top of `config.py`.
 *   `Data Structure & Identifiers`:
     *   `frame_folder`: Subfolder for raw frames (e.g., `"frames"`).
     *   `mdoc_folder`: Subfolder for `.mdoc` files (e.g., `"mdocs"`).
-    *   `gain_ref`: Filename of the gain reference.
-    *   `tomo_match_string`: A string to identify tomograms by filename (e.g., `"sq"`).
+*   `gain_ref`: Filename of the gain reference. If the specified file isn't found, the pipeline will automatically use any other `.gain` file present in the `frame_folder`.
+*   `tomo_match_string`: A string to identify tomograms by filename (e.g., `"sq"`).
 
 ### Key Acquisition Parameters
 

@@ -8,8 +8,8 @@ raw_directory = "/data/Microscopy/Titan/Siyu"
 # Titan2 data will be moved there and there might be no copy of your raw data in the original place
 frame_folder = "frames"
 mdoc_folder = "mdocs"
-gain_ref = "20250721_104451_EER_GainReference.gain"
-tomo_match_string = "L2" 
+gain_ref = "wrong.gain"
+tomo_match_string = "L1" 
 
 # --- Key Acquisition Parameters ---
 angpix = 0.935

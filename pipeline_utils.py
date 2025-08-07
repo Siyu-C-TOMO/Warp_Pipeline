@@ -43,8 +43,6 @@ def reorganize_falcon4_data(config, logs_dir: Path):
     frames_dir.mkdir(exist_ok=True)
 
     logging.info("Starting Falcon4 data reorganization (optimized)...")
-
-    gain_ref_name = Path(config.gain_ref).name
     
     to_frames = []
     to_root_files = []
@@ -91,12 +89,45 @@ def reorganize_falcon4_data(config, logs_dir: Path):
     logging.info("Reorganization Summary:")
     logging.info(f"  - Moved {counts['eer']} .eer files to frames/")
     logging.info(f"  - Moved {counts['mdoc']} .eer.mdoc files to frames/")
-    if counts['gain'] > 0:
-        logging.info(f"  - Moved {counts['gain']} gain reference file(s) to frames/")
-    else:
-        logging.info(f"  - No gain reference files found. Please ensure that a gain reference file is present under {frames_dir}.")
+    logging.info(f"  - Moved {counts['gain']} gain reference file(s) to frames/")
     logging.info(f"  - Moved {counts['other_files']} other files and {counts['dirs']} directories to the destination root.")
     logging.info("Falcon4 data reorganization completed.")
+
+
+def prepare_gain_reference(config, frame_source_path: Path, frames_dir: Path) -> Optional[Path]:
+    """
+    Finds the correct gain reference file and creates a symlink in the frames directory.
+    
+    It first checks for the gain file specified in the config. If not found,
+    it searches for any .gain file in the source directory.
+    """
+    gain_ref_path = None
+    
+    specific_gain_path = frame_source_path / config.gain_ref
+    if specific_gain_path.exists():
+        gain_ref_path = specific_gain_path
+        logging.info(f"Using specified gain file: {gain_ref_path}")
+    else:
+        logging.warning(f"{config.gain_ref} not found. Searching for other .gain files...")
+        found_gains = list(frame_source_path.glob("*.gain"))
+        if len(found_gains) == 1:
+            gain_ref_path = found_gains[0]
+            logging.info(f"Found and using alternative gain file: {gain_ref_path}")
+        elif len(found_gains) > 1:
+            logging.error(f"Multiple .gain files found in {frame_source_path}. Please specify the correct one in config.py.")
+            return
+        else:
+            logging.error(f"No .gain files found in {frame_source_path}.")
+            return
+
+    if gain_ref_path:
+        gain_ref_link = frames_dir / gain_ref_path.name
+        if not gain_ref_link.exists():
+            gain_ref_link.symlink_to(gain_ref_path)
+            logging.info(f"Created symlink for gain reference: {gain_ref_link}")
+        return gain_ref_link
+    
+    return None
 
 
 # --- Custom Exceptions ---

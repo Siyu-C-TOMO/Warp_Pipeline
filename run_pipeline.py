@@ -9,7 +9,7 @@ import shutil
 from pathlib import Path
 
 import config as cfg
-from pipeline_utils import run_command, update_xml_files_from_com, reorganize_falcon4_data, calculate_patch_size
+from pipeline_utils import run_command, update_xml_files_from_com, reorganize_falcon4_data, calculate_patch_size, prepare_gain_reference
 
 def run_preprocess(dataset_dir: Path, logs_dir: Path, params: dict):
     """Runs the preprocessing stage."""
@@ -31,20 +31,12 @@ def run_preprocess(dataset_dir: Path, logs_dir: Path, params: dict):
         dest_file = frames_dir / frame_file.name
         if not dest_file.exists():
             dest_file.symlink_to(frame_file)
-    
-    if os.path.exists( frame_source_path / cfg.gain_ref ) == True:
-        gain_ref_path = frame_source_path / cfg.gain_ref
-        gain_ref_link = frames_dir / cfg.gain_ref 
-        logging.info(f"Using {gain_ref_path} as the gain file.")
-        if not gain_ref_link.exists():
-            gain_ref_link.symlink_to(gain_ref_path)
-    else:
-        for files in frame_source_path.glob("*.gain"):
-            gain_ref_path = frame_source_path / files
-            gain_ref_link = frames_dir / files
-            logging.info(f"{cfg.gain_ref} not found. Using {gain_ref_link} as the gain file instead.")
-            if not gain_ref_link.exists():
-                gain_ref_link.symlink_to(gain_ref_path)
+
+    gain_ref_link = prepare_gain_reference(cfg, frame_source_path, frames_dir)
+
+    if not gain_ref_link:
+        logging.critical("Gain reference preparation failed. Please check logs. Aborting preprocessing.")
+        return
 
     logging.info("Creating frame series settings...")
     cmd_frame_settings = [
@@ -133,8 +125,8 @@ def run_builtin_etomo(dataset_dir: Path, logs_dir: Path):
         "--settings", "warp_tiltseries.settings",
         "--angpix", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
         "--initial_axis", str(cfg.tilt_axis_angle), 
-        "--do_axis_search",
-        "--input_data", "tomostar/L2_G1_ts_003.tomostar",
+        #"--do_axis_search",
+        #"--input_data", "tomostar/L2_G1_ts_003.tomostar",
         "--patch_size", str(patch_size),
         "--device_list", str(cfg.gpu_devices[0]),
         "--perdevice", str(cfg.jobs_per_gpu * 2)
