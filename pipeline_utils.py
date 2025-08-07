@@ -43,53 +43,42 @@ def reorganize_falcon4_data(config, logs_dir: Path):
     frames_dir.mkdir(exist_ok=True)
 
     logging.info("Starting Falcon4 data reorganization (optimized)...")
-    
-    to_frames = []
-    to_root_files = []
-    to_root_dirs = []
-    
-    counts = {
-        'eer': 0,
-        'mdoc': 0,
-        'gain': 0,
-        'other_files': 0,
-        'dirs': 0
-    }
 
-    for item_path in list(source_dir.iterdir()):
-        if item_path.is_file():
-            if item_path.name.endswith('.eer'):
-                to_frames.append(str(item_path))
-                counts['eer'] += 1
-            elif item_path.name.endswith('.eer.mdoc'):
-                to_frames.append(str(item_path))
-                counts['mdoc'] += 1
-            elif item_path.name.endswith('.gain'):
-                to_frames.append(str(item_path))
-                counts['gain'] += 1
-            else:
-                to_root_files.append(str(item_path))
-                counts['other_files'] += 1
-        elif item_path.is_dir():
-            to_root_dirs.append(str(item_path))
+    frames_extensions = {'.eer', '.eer.mdoc', '.gain'}
+    
+    file_batches: Dict[Path, List[str]] = {dest_dir: [], frames_dir: []}
+    dir_batches: Dict[Path, List[str]] = {dest_dir: []}
+    
+    counts = {ext: 0 for ext in frames_extensions}
+    counts.update({'other_files': 0, 'dirs': 0})
+
+    for item_path in source_dir.iterdir():
+        if item_path.is_dir():
+            dir_batches[dest_dir].append(str(item_path))
             counts['dirs'] += 1
+            continue
 
-    if to_frames:
-        cmd = ['mv', '-t', str(frames_dir)] + to_frames
-        run_command(cmd, reorg_log_path, verbose=False)
-    
-    if to_root_files:
-        cmd = ['mv', '-t', str(dest_dir)] + to_root_files
-        run_command(cmd, reorg_log_path, verbose=False)
+        found_ext = next((ext for ext in frames_extensions if item_path.name.endswith(ext)), None)
 
-    if to_root_dirs:
-        cmd = ['mv', '-t', str(dest_dir)] + to_root_dirs
-        run_command(cmd, reorg_log_path, verbose=False)
-        
+        if found_ext:
+            target_dir = frames_dir
+            counts[found_ext] += 1
+        else:
+            target_dir = dest_dir
+            counts['other_files'] += 1
+            
+        file_batches[target_dir].append(str(item_path))
+
+    all_batches = {**file_batches, **dir_batches}
+    for destination, items in all_batches.items():
+        if items:
+            cmd = ['mv', '-t', str(destination)] + items
+            run_command(cmd, reorg_log_path, verbose=False)
+
     logging.info("Reorganization Summary:")
-    logging.info(f"  - Moved {counts['eer']} .eer files to frames/")
-    logging.info(f"  - Moved {counts['mdoc']} .eer.mdoc files to frames/")
-    logging.info(f"  - Moved {counts['gain']} gain reference file(s) to frames/")
+    logging.info(f"  - Moved {counts['.eer']} .eer files to frames/")
+    logging.info(f"  - Moved {counts['.eer.mdoc']} .eer.mdoc files to frames/")
+    logging.info(f"  - Moved {counts['.gain']} gain reference file(s) to frames/")
     logging.info(f"  - Moved {counts['other_files']} other files and {counts['dirs']} directories to the destination root.")
     logging.info("Falcon4 data reorganization completed.")
 
