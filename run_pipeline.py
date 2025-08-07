@@ -32,10 +32,19 @@ def run_preprocess(dataset_dir: Path, logs_dir: Path, params: dict):
         if not dest_file.exists():
             dest_file.symlink_to(frame_file)
     
-    gain_ref_path = frame_source_path / cfg.gain_ref
-    gain_ref_link = frames_dir / cfg.gain_ref
-    if not gain_ref_link.exists():
-        gain_ref_link.symlink_to(gain_ref_path)
+    if os.path.exists( frame_source_path / cfg.gain_ref ) == True:
+        gain_ref_path = frame_source_path / cfg.gain_ref
+        gain_ref_link = frames_dir / cfg.gain_ref 
+        logging.info(f"Using {gain_ref_path} as the gain file.")
+        if not gain_ref_link.exists():
+            gain_ref_link.symlink_to(gain_ref_path)
+    else:
+        for files in frame_source_path.glob("*.gain"):
+            gain_ref_path = frame_source_path / files
+            gain_ref_link = frames_dir / files
+            logging.info(f"{cfg.gain_ref} not found. Using {gain_ref_link} as the gain file instead.")
+            if not gain_ref_link.exists():
+                gain_ref_link.symlink_to(gain_ref_path)
 
     logging.info("Creating frame series settings...")
     cmd_frame_settings = [

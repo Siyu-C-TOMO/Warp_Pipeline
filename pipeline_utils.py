@@ -66,7 +66,7 @@ def reorganize_falcon4_data(config, logs_dir: Path):
             elif item_path.name.endswith('.eer.mdoc'):
                 to_frames.append(str(item_path))
                 counts['mdoc'] += 1
-            elif item_path.name == gain_ref_name:
+            elif item_path.name.endswith('.gain'):
                 to_frames.append(str(item_path))
                 counts['gain'] += 1
             else:
@@ -93,6 +93,8 @@ def reorganize_falcon4_data(config, logs_dir: Path):
     logging.info(f"  - Moved {counts['mdoc']} .eer.mdoc files to frames/")
     if counts['gain'] > 0:
         logging.info(f"  - Moved {counts['gain']} gain reference file(s) to frames/")
+    else:
+        logging.info(f"  - No gain reference files found. Please ensure that a gain reference file is present under {frames_dir}.")
     logging.info(f"  - Moved {counts['other_files']} other files and {counts['dirs']} directories to the destination root.")
     logging.info("Falcon4 data reorganization completed.")
 
