@@ -113,6 +113,11 @@ def cryolo(log_file_path: Path):
         logging.error(f"No cryolo directory. Run star-handler process-relion2cryolo first.")
         sys.exit(1)
 
+    list_file = Path('ribo_list_final.txt')
+    if not list_file.exists():
+        logging.error(f"tomogram list file does not exist in the current directory: {list_file.resolve()}")
+        sys.exit(1)
+
     cryolo_ad = "/software/repo/rhel9/cryolo/1.9.4/bin"
     cmd_ini = f"'{cryolo_ad}/python3.8' -u '{cryolo_ad}/cryolo_gui.py' --ignore-gooey"
     thre = 0.25
@@ -124,14 +129,9 @@ def cryolo(log_file_path: Path):
         f"{cmd_ini} predict -c 'config_cryolo.json' -w 'cryolo_model_fromRelion_expand10.h5' -i tomograms -o '{output_dir}' -t '{thre}' -g '1' -d '0' -pbs '3' --gpu_fraction '1.0' -nc '4' --norm_margin '0.0' -sm 'LINE_STRAIGHTNESS' -st '0.95' -sr '1.41' -ad '10' --directional_method 'PREDICTED' -mw '100' --tomogram -tsr '-1' -tmem '0' -mn3d '2' -tmin '{connect_min}' -twin '-1' -tedge '0.4' -tmerge '0.8'"
     ]
     for cmd in commands:
-        step_name = cmd.split()[2] 
+        step_name = cmd.split()[4] 
         logging.info(f"--- Starting CryoLo step: {step_name} ---")
         run_command(cmd, log_file_path, cwd=cryolo_dir, module_load="cryolo")
-
-    list_file = Path('ribo_list_final.txt')
-    if not list_file.exists():
-        logging.error(f"tomogram list file does not exist in the current directory: {list_file.resolve()}")
-        sys.exit(1)
     
     with open(list_file, 'r') as f:
         for line in f.readlines():

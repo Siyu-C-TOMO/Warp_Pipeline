@@ -2,25 +2,25 @@
 # ============ USER-EDITABLE SETTINGS ==============
 # ==================================================
 # --- General Settings ---
-dataset_name = "20250731_HSC_SBPvisit"
+dataset_name = "20250819_HSC_SBP_2ndLoad"
 raw_directory = "/data/Microscopy/Titan/Siyu" 
 # Path to where you would like to save your raw data
 # Titan2 data will be moved there and there might be no copy of your raw data in the original place
 frame_folder = "frames"
 mdoc_folder = "mdocs"
 gain_ref = "wrong.gain"
-tomo_match_string = "L1" 
+tomo_match_string = "L" 
 
 # --- Key Acquisition Parameters ---
 angpix = 0.935
 dose = 5.172
-tilt_axis_angle = -94.88233
+tilt_axis_angle = 84.3
 thickness_pxl = 3000
 camera_type = "Falcon4" # Switch between "K3" or "Falcon4"
 
 # --- Falcon4 Specific Settings ---
 # The source directory containing raw .eer and .eer.mdoc files
-falcon4_source_dir = "/data/Microscopy/titan2/Villa_20250731_110000_SYC"
+falcon4_source_dir = "/data/Microscopy/titan2/Villa_20250818_200000_SYC"
 falcon4_eer_ngroups = 8
 
 # --- K3 Specific Settings ---
