@@ -258,6 +258,8 @@ class eTomoOptimizer:
         try:
             views_to_exclude, contours_to_include = self._analyze_alignment_logs()
 
+            #views_to_exclude.extend([str(i) for i in range(20, 30)])
+
             self.logger.info(f'Pruning: {len(views_to_exclude)} views to exclude and {len(contours_to_include)} contours to include.')
             self._prune_fiducial_model(contours_to_include)
             views_to_exclude_str = ','.join(views_to_exclude) if views_to_exclude else '0'

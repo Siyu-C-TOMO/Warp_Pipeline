@@ -2,7 +2,25 @@
 # This is a wrapper script for submfg to ensure IMOD_DIR is set.
 
 # Set the IMOD_DIR environment variable explicitly
-export IMOD_DIR=/software/repo/all/imod/4.11.25
+KNOWN_IMOD_DIRS=(
+    "/software/repo/all/imod/4.11.25"
+    "/data/software/repo/imod/4.11.25"
+)
 
-# Execute the real submfg with all passed arguments
-/software/repo/all/imod/4.11.25/bin/submfg "$@"
+FOUND_IMOD_DIR=""
+
+for dir in "${KNOWN_IMOD_DIRS[@]}"; do
+    if [ -x "${dir}/bin/submfg" ]; then
+        FOUND_IMOD_DIR=$dir
+        break
+    fi
+done
+
+if [ -z "$FOUND_IMOD_DIR" ]; then
+    echo "Error: Could not find a valid IMOD installation in any of the known locations." >&2
+    exit 1
+fi
+
+export IMOD_DIR=$FOUND_IMOD_DIR
+"$FOUND_IMOD_DIR/bin/submfg" "$@"
+

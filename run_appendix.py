@@ -26,10 +26,10 @@ def reconstruction(log_file_path: Path):
         "WarpTools", "ts_reconstruct",
         "--settings", "warp_tiltseries.settings",
         "--angpix", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
-        "--device_list", str(cfg.gpu_devices[0]),
         "--perdevice", str(cfg.jobs_per_gpu)
         #"--input_data", "tomostar/L2_G1_ts_007.tomostar"
     ]
+    cmd_reconstruct.extend(["--device_list"] + [str(d) for d in cfg.gpu_devices])
     run_command(cmd_reconstruct, log_file_path, env=env)
 
     logging.info(f"Linking result files into {win_dir}...")
@@ -195,10 +195,10 @@ def cryolo(log_file_path: Path):
         "--box", "72",
         "--diameter", "350",
         "--relative_output_paths",
-        "--device_list", str(cfg.gpu_devices[0]),
         "--perdevice", str(cfg.jobs_per_gpu),
         "--3d"
     ]
+    cmd_export.extend(["--device_list"] + [str(d) for d in cfg.gpu_devices])
     run_command(cmd_export, log_file_path, env=env, module_load="warp/2.0.0dev31")
     logging.info("--- WarpTools ts_export_particles completed. ---")
 

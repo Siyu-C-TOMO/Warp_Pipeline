@@ -78,9 +78,9 @@ def run_preprocess(dataset_dir: Path, logs_dir: Path, params: dict):
         "--c_use_sum",
         "--out_averages",
         "--out_average_halves",
-        "--device_list", str(cfg.gpu_devices[0]),
         "--perdevice", str(cfg.jobs_per_gpu * 2)
     ]
+    cmd_motion_ctf.extend(["--device_list"] + [str(d) for d in cfg.gpu_devices])
     run_command(cmd_motion_ctf, logs_dir / "motion_ctf.log", cwd=dataset_dir)
 
     logging.info("Plotting histograms of 2D processing metrics...")
@@ -120,7 +120,7 @@ def run_builtin_etomo(dataset_dir: Path, logs_dir: Path):
 
     patch_size = calculate_patch_size(cfg)
 
-    cmd_to_run = [
+    cmd_ts_etomo = [
         "WarpTools", "ts_etomo_patches",
         "--settings", "warp_tiltseries.settings",
         "--angpix", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
@@ -128,10 +128,10 @@ def run_builtin_etomo(dataset_dir: Path, logs_dir: Path):
         #"--do_axis_search",
         #"--input_data", "tomostar/L2_G1_ts_003.tomostar",
         "--patch_size", str(patch_size),
-        "--device_list", str(cfg.gpu_devices[0]),
         "--perdevice", str(cfg.jobs_per_gpu * 2)
     ]
-    run_command(cmd_to_run, logs_dir / "etomo_patches.log", cwd=dataset_dir, env=env)
+    cmd_ts_etomo.extend(["--device_list"] + [str(d) for d in cfg.gpu_devices])
+    run_command(cmd_ts_etomo, logs_dir / "etomo_patches.log", cwd=dataset_dir, env=env)
 
     logging.info("Patched eTomo test stage completed.")
 
@@ -217,9 +217,9 @@ def run_postprocess(dataset_dir: Path, logs_dir: Path):
         "--settings", "warp_tiltseries.settings",
         "--range_high", "7",
         "--defocus_max", "8",
-        "--device_list", str(cfg.gpu_devices[0]),
         "--perdevice", str(cfg.jobs_per_gpu)
     ]
+    cmd_ts_ctf.extend(["--device_list"] + [str(d) for d in cfg.gpu_devices])
     run_command(cmd_ts_ctf, logs_dir / "tomo_ctf.log", cwd=dataset_dir)
 
     # --- XML Parsing with isolated logging ---
