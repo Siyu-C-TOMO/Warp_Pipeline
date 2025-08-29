@@ -199,7 +199,7 @@ def cryolo(log_file_path: Path):
         "--3d"
     ]
     cmd_export.extend(["--device_list"] + [str(d) for d in cfg.gpu_devices])
-    run_command(cmd_export, log_file_path, env=env, module_load="warp/2.0.0dev31")
+    run_command(cmd_export, log_file_path, env=env, module_load="warp/2.0.0dev34")
     logging.info("--- WarpTools ts_export_particles completed. ---")
 
 def main():

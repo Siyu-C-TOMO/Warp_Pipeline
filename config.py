@@ -21,13 +21,13 @@ camera_type = "Falcon4" # Switch between "K3" or "Falcon4"
 # --- Falcon4 Specific Settings ---
 # The source directory containing raw .eer and .eer.mdoc files
 falcon4_source_dir = "/data/Microscopy/titan2/Villa_20250820_100000_SYC"
-falcon4_eer_ngroups = 8
+falcon4_eer_ngroups = 16
 
 # --- K3 Specific Settings ---
 k3_frame_num = 8
 
 # --- Computing Resources ---
-gpu_devices = [2,0,1,3,4,5,6,7]
+gpu_devices = [0,1,2,3,4,5,6,7]
 jobs_per_gpu = 4
 etomo_cpu_cores = 8
 
