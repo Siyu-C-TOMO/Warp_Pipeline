@@ -3,7 +3,7 @@
 
 PARAMS = {
     "setupset.currentStackExt": "mrc",
-    "setupset.copyarg.stackext": "mrc",
+    "setupset.copyarg.stackext": "st",
     "setupset.copyarg.montage": "0",
     "setupset.copyarg.skip": "",
     "setupset.copyarg.bskip": "",
@@ -35,7 +35,7 @@ PARAMS = {
     "comparam.align.tiltalign.TargetPatchSizeXandY": "170,170",
     "comparam.align.tiltalign.MagOption": "0",
     "comparam.align.tiltalign.TiltOption": "0",
-    "comparam.align.tiltalign.RotOption": "-1",
+    "comparam.align.tiltalign.RotOption": "0",
     "comparam.align.tiltalign.BeamTiltOption": "0",
     "comparam.align.tiltalign.KFactorScaling": "1.0",
     "comparam.align.tiltalign.ResidualReportCriterion": "3",
@@ -49,5 +49,5 @@ PARAMS = {
     "runtime.Cleanup.any.keepUntrimmed": "1",
     "comparam.align.tiltalign.ImagesAreBinned": "4",
     "comparam.newst.newstack.BinByFactor": "8",
-    "comparam.newst.newstack.SizeToOutputInXandY": "512,512",
+    "comparam.newst.newstack.SizeToOutputInXandY": "512,720",
 }

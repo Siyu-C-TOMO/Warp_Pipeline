@@ -36,6 +36,7 @@ try:
     FINAL_Y_SIZE = cfg.final_y_size
     THICKNESS_PXL = cfg.thickness_pxl
     FINAL_NEWSTACK_BIN = cfg.FINAL_NEWSTACK_BIN
+    CAMERA_TYPE = cfg.camera_type
 except ImportError:
     logging.warning("Could not import config.py. Using fallback default values.")
     NUM_CPU_CORES = 8
@@ -44,6 +45,7 @@ except ImportError:
     FINAL_Y_SIZE = 512
     THICKNESS_PXL = 3000
     FINAL_NEWSTACK_BIN = 8
+    CAMERA_TYPE = "Falcon4"
 
 os.environ['NUMEXPR_MAX_THREADS'] = str(NUM_CPU_CORES)
 
@@ -140,10 +142,11 @@ class eTomoOptimizer:
         backup_fid = self.ts_dir / f'{self.ts_name}_bk.fid'
         if not backup_fid.exists():
             original_fid.rename(backup_fid)
-        
+
+        im_name = self.ts_name + '_preali.mrc' if (self.ts_dir / f'{self.ts_name}_preali.mrc').exists() else self.ts_name + '.preali'
         cmd = [
             'point2model', '-op', '-ci', '5', '-w', '2', '-co', '157,0,255', '-zs', '3',
-            '-im', f'{self.ts_name}_preali.mrc', '-in', str(pruned_fid_pt_path), '-ou', str(original_fid)
+            '-im', im_name, '-in', str(pruned_fid_pt_path), '-ou', str(original_fid)
         ]
         run_command(cmd, self.log_dir / 'log_point2model.log', cwd=self.ts_dir)
 
@@ -189,22 +192,31 @@ class eTomoOptimizer:
         """Creates the necessary .com files for IMOD using a unified update logic."""
         newst_mods = {
             'SizeToOutputInXandY': {
-                'value': f'{FINAL_X_SIZE},{FINAL_Y_SIZE}',
+                'value': f'{FINAL_Y_SIZE},{FINAL_X_SIZE}',
                 'anchor': 'AdjustOrigin'
             }
         }
         self._update_com_file(self.ts_dir / 'newst.com', self.ts_dir / 'newst_clean.com', newst_mods)
 
-        tilt_mods = {
-            'THICKNESS': {
-                'value': str(int(THICKNESS_PXL / FINAL_NEWSTACK_BIN)),
-                'anchor': 'XTILTFILE'
-            },
-            'FakeSIRTiterations': {
-                'value': str(SIRT_ITERATIONS),
-                'anchor': '$tilt'
+        tilt_mods = {}
+        if CAMERA_TYPE == "Falcon4":
+            tilt_mods = {
+                'THICKNESS': {
+                    'value': str(int(THICKNESS_PXL / FINAL_NEWSTACK_BIN)),
+                    'anchor': 'XTILTFILE'
+                },
+                'FakeSIRTiterations': {
+                    'value': str(SIRT_ITERATIONS),
+                    'anchor': '$tilt'
+                }
             }
-        }
+        elif CAMERA_TYPE == "K3":
+            tilt_mods = {
+                'IMAGEBINNED': {
+                    'value': str(int(FINAL_NEWSTACK_BIN)),
+                    'anchor': 'OutputFile'
+                }
+            }
         if views_to_exclude_str != '0':
             tilt_mods['EXCLUDELIST'] = {
                 'value': views_to_exclude_str,
@@ -226,16 +238,21 @@ class eTomoOptimizer:
         run_command(['submfg', 'newst_clean.com'], self.log_dir / 'log_newst.log', cwd=self.ts_dir)
         run_command(['submfg', 'tilt_clean.com'], self.log_dir / 'log_tilt.log', cwd=self.ts_dir)
 
-        rec_file = self.ts_dir / f'{self.ts_name}_rec.mrc'
-        if rec_file.exists():
-            self.logger.info(f'Starting final rotation on {rec_file}.')
-            rot_file = self.ts_dir / f'{self.ts_name}_rot.mrc'
-            run_command(['trimvol', '-rx', str(rec_file), str(rot_file)], self.log_dir / 'log_trimvol.log', cwd=self.ts_dir)
-            run_command(['clip', 'flipz', str(rot_file), str(self.final_mrc_path)], self.log_dir / 'log_clip.log', cwd=self.ts_dir)
-            rot_file.unlink()
-            self.logger.info('Finished final rotation.')
-        else:
-            self.logger.warning(f'{rec_file} does not exist. Cannot perform final rotation.')
+        rec_file = next((f for f in [
+            self.ts_dir / f'{self.ts_name}_rec.mrc',
+            self.ts_dir / f'{self.ts_name}.rec'
+        ] if f.exists()), None)
+        
+        if not rec_file:
+            self.logger.warning('No reconstruction file found. Cannot perform final rotation.')
+            return
+            
+        self.logger.info(f'Starting final rotation on {rec_file}.')
+        rot_file = self.ts_dir / f'{self.ts_name}_rot.mrc'
+        run_command(['trimvol', '-rx', str(rec_file), str(rot_file)], self.log_dir / 'log_trimvol.log', cwd=self.ts_dir)
+        run_command(['clip', 'flipz', str(rot_file), str(self.final_mrc_path)], self.log_dir / 'log_clip.log', cwd=self.ts_dir)
+        rot_file.unlink()
+        self.logger.info('Finished final rotation.')
 
     def _pilot_alignment(self) -> None:
         """Runs the pilot alignment step.
@@ -258,7 +275,7 @@ class eTomoOptimizer:
         try:
             views_to_exclude, contours_to_include = self._analyze_alignment_logs()
 
-            #views_to_exclude.extend([str(i) for i in range(20, 30)])
+            # views_to_exclude.extend([str(i) for i in range(20, 30)])
 
             self.logger.info(f'Pruning: {len(views_to_exclude)} views to exclude and {len(contours_to_include)} contours to include.')
             self._prune_fiducial_model(contours_to_include)

@@ -8,6 +8,7 @@ import subprocess
 import shutil
 from pathlib import Path
 
+import etomo_align
 import config as cfg
 from pipeline_utils import run_command, update_xml_files_from_com, reorganize_falcon4_data, calculate_patch_size, prepare_gain_reference
 
@@ -78,9 +79,9 @@ def run_preprocess(dataset_dir: Path, logs_dir: Path, params: dict):
         "--c_use_sum",
         "--out_averages",
         "--out_average_halves",
-        "--perdevice", str(cfg.jobs_per_gpu * 2)
+        "--perdevice", str(cfg.jobs_per_gpu)
     ]
-    cmd_motion_ctf.extend(["--device_list"] + [str(d) for d in cfg.gpu_devices])
+    # cmd_motion_ctf.extend(["--device_list"] + [str(d) for d in cfg.gpu_devices])
     run_command(cmd_motion_ctf, logs_dir / "motion_ctf.log", cwd=dataset_dir)
 
     logging.info("Plotting histograms of 2D processing metrics...")
@@ -91,7 +92,12 @@ def run_preprocess(dataset_dir: Path, logs_dir: Path, params: dict):
     ]
     run_command(cmd_histograms, logs_dir / "histograms.log", cwd=dataset_dir)
 
+    logging.info("Preprocessing stage completed.")
+
+def run_ts_import(dataset_dir: Path, logs_dir: Path):
+    """Runs the tilt series import stage."""
     logging.info("Importing tilt series metadata...")
+    
     cmd_ts_import = [
         "WarpTools", "ts_import",
         "--mdocs", "mdocs",
@@ -102,12 +108,14 @@ def run_preprocess(dataset_dir: Path, logs_dir: Path, params: dict):
         "--output", "tomostar"
     ]
     run_command(cmd_ts_import, logs_dir / "tomostar.log", cwd=dataset_dir)
-
-    logging.info("Preprocessing stage completed.")
+    
+    logging.info("Tilt series import stage completed.")
 
 def run_builtin_etomo(dataset_dir: Path, logs_dir: Path):
     """Runs the eTomo alignment stage with a patched environment."""
     logging.info("Starting Patched eTomo alignment stage...")
+
+    run_ts_import(dataset_dir, logs_dir)
 
     pipeline_dir = Path(__file__).parent.resolve()
     wrapper_dir = pipeline_dir / 'imod_wrappers'
@@ -125,7 +133,7 @@ def run_builtin_etomo(dataset_dir: Path, logs_dir: Path):
         "--settings", "warp_tiltseries.settings",
         "--angpix", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
         "--initial_axis", str(cfg.tilt_axis_angle), 
-        #"--do_axis_search",
+        # "--do_axis_search",
         #"--input_data", "tomostar/L2_G1_ts_003.tomostar",
         "--patch_size", str(patch_size),
         "--perdevice", str(cfg.jobs_per_gpu * 2)
@@ -134,6 +142,37 @@ def run_builtin_etomo(dataset_dir: Path, logs_dir: Path):
     run_command(cmd_ts_etomo, logs_dir / "etomo_patches.log", cwd=dataset_dir, env=env)
 
     logging.info("Patched eTomo test stage completed.")
+
+def run_custom_etomo(dataset_dir: Path, logs_dir: Path):
+    """Runs the eTomo alignment stage with proper directory management."""
+    logging.info("Starting eTomo alignment stage...")
+    
+    run_ts_import(dataset_dir, logs_dir)
+
+    logging.info("Making tilt stacks...")
+    cmd_ts_stack = [
+        "WarpTools", "ts_stack",
+        "--settings", "warp_tiltseries.settings"
+    ]
+    run_command(cmd_ts_stack, logs_dir / "tiltstack.log", cwd=dataset_dir)
+
+    original_dir = dataset_dir.resolve()
+    etomo_dir = original_dir / "warp_tiltseries" / "tiltstack"
+
+    if not etomo_dir.is_dir():
+        logging.error(f"eTomo directory not found at: {etomo_dir}")
+        logging.error("Please ensure the preprocessing stage was run successfully.")
+        return
+
+    try:
+        logging.info(f"Changing directory to {etomo_dir}")
+        os.chdir(etomo_dir)
+        etomo_align.run_alignment()
+    finally:
+        logging.info(f"Returning to directory: {original_dir}")
+        os.chdir(original_dir)
+        
+    logging.info("eTomo alignment stage completed.")
 
 def optimize_etomo(dataset_dir: Path, logs_dir: Path):
     """Runs the customized eTomo optimization stage."""
@@ -172,7 +211,7 @@ def run_postprocess(dataset_dir: Path, logs_dir: Path):
         rmd_error_log.rename(str(rmd_error_log) + "~")
     
     with rmd_error_log.open("w") as f:
-        for d in (dataset_dir / "warp_tiltseries/tiltstack").glob("L*"):
+        for d in (dataset_dir / "warp_tiltseries/tiltstack").glob(f"{cfg.tomo_match_string}*"):
             align_log = d / "align_clean.log"
             if align_log.exists():
                 with align_log.open("r") as log_file:
@@ -342,7 +381,7 @@ def main():
     if args.stage in ['all', 'preprocess']:
         run_preprocess(dataset_dir, logs_dir, cfg.pipeline_params)
     if args.stage in ['all', 'etomo']:
-        run_builtin_etomo(dataset_dir, logs_dir)
+        run_builtin_etomo(dataset_dir, logs_dir) if cfg.camera_type == "Falcon4" else run_custom_etomo(dataset_dir, logs_dir)
     if args.stage in ['all', 'optimize']:
         optimize_etomo(dataset_dir, logs_dir)
     if args.stage in ['all', 'postprocess']:

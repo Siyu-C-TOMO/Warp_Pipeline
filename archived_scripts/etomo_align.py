@@ -398,18 +398,18 @@ def optimization(ts:str) -> str:
         prepare_fiducial_file_to_write(pruned_fiducial_file,f'{ts}_fidPrune.pt')
         subprocess.run(f'mv {ts}.fid {ts}_bk.fid', shell=True, check=True)
         subprocess.run(f'point2model -op -ci 5 -w 2 -co 157,0,255 -zs 3 -im {ts}.preali -in {ts}_fidPrune.pt -ou {ts}.fid', shell=True, check=True)
-        makealigncom_excludeList('align_noRot.com','align_noRot2.com',suggested_views_to_exclude_str)
-        maketiltcom_excludeList('tilt_noRot.com','tilt_noRot2.com',suggested_views_to_exclude_str)
-        submfg('align_noRot2.com')
+        makealigncom_excludeList('align_noRot.com','align_clean.com',suggested_views_to_exclude_str)
+        maketiltcom_excludeList('tilt_noRot.com','tilt_clean.com',suggested_views_to_exclude_str)
+        submfg('align_clean.com')
         submfg('newst_noRot.com')
-        submfg('tilt_noRot2.com')
+        submfg('tilt_clean.com')
 
         # final rotation
         if os.path.exists(f'{ts}.rec'):
             print(f'start of rotation on {ts}.rec')
-            subprocess.run(f'trimvol -rx {ts}.rec {ts}_rot.rec', shell=True, check=True, stdout=subprocess.DEVNULL)
-            subprocess.run(f'clip flipz {ts}_rot.rec {ts}_rot_flipz.rec', shell=True, check=True, stdout=subprocess.DEVNULL)
-            subprocess.run(f'rm -f {ts}_rot.rec', shell=True)
+            subprocess.run(f'trimvol -rx {ts}.rec {ts}_rot.mrc', shell=True, check=True, stdout=subprocess.DEVNULL)
+            subprocess.run(f'clip flipz {ts}_rot.mrc {ts}_rot_flipz.mrc', shell=True, check=True, stdout=subprocess.DEVNULL)
+            subprocess.run(f'rm -f {ts}_rot.mrc', shell=True)
             print(f'end of rotation on {ts}.rec')
         else:
             print(f'{ts}.rec does not exist for whatever reason. Check back and see what went wrong!')
@@ -419,10 +419,10 @@ def optimization(ts:str) -> str:
 
     finally:
         os.chdir('../')
-        if os.path.exists(f'{ts}/{ts}_rot_flipz.rec'):
-            return f"{ts} optimization is done, rotated tomogram saved as {ts}/{ts}_rot_flipz.rec"
+        if os.path.exists(f'{ts}/{ts}_rot_flipz.mrc'):
+            return f"{ts} optimization is done, rotated tomogram saved as {ts}/{ts}_rot_flipz.mrc"
         else:
-            return f"{ts} optimization encountered issue. {ts}/{ts}_rot_flipz.rec not available"
+            return f"{ts} optimization encountered issue. {ts}/{ts}_rot_flipz.mrc not available"
 
 
 def run_alignment():
@@ -433,10 +433,10 @@ def run_alignment():
     submfg(etomo_com)
     print("Batchetomo process finished.")
 
-    print("Starting parallel optimization for all tomograms...")
-    with Pool(cfg.etomo_cpu_cores) as pool:
-        checkmarks = [pool.apply_async(optimization, args=(ts,)) for ts in tomo_list]
-        for checkmark in checkmarks:
-            print(f'{checkmark.get()}')
+    # print("Starting parallel optimization for all tomograms...")
+    # with Pool(cfg.etomo_cpu_cores) as pool:
+    #     checkmarks = [pool.apply_async(optimization, args=(ts,)) for ts in tomo_list]
+    #     for checkmark in checkmarks:
+    #         print(f'{checkmark.get()}')
             
     print("All tasks are done.")

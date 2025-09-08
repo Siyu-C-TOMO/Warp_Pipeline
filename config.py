@@ -2,21 +2,21 @@
 # ============ USER-EDITABLE SETTINGS ==============
 # ==================================================
 # --- General Settings ---
-dataset_name = "20250820_HSC_4hr"
-raw_directory = "/data/Microscopy/Titan/Siyu" 
+dataset_name = "20240328_A549TNT_EK"
+raw_directory = "/data/Microscopy/Titan/" 
 # Path to where you would like to save your raw data
 # Titan2 data will be moved there and there might be no copy of your raw data in the original place
 frame_folder = "frames"
-mdoc_folder = "mdocs"
-gain_ref = "wrong.gain"
-tomo_match_string = "L" 
+mdoc_folder = "pacetomo"
+gain_ref = "CountRef_pol1_g1_ts_001_001_000_5.0.mrc"
+tomo_match_string = "pol10_2" 
 
 # --- Key Acquisition Parameters ---
-angpix = 0.935
-dose = 5.172
-tilt_axis_angle = 84.3
+angpix = 1.635
+dose = 5.161
+tilt_axis_angle = -94.6
 thickness_pxl = 3000
-camera_type = "Falcon4" # Switch between "K3" or "Falcon4"
+camera_type = "K3" # Switch between "K3" or "Falcon4"
 
 # --- Falcon4 Specific Settings ---
 # The source directory containing raw .eer and .eer.mdoc files
@@ -27,7 +27,7 @@ falcon4_eer_ngroups = 16
 k3_frame_num = 8
 
 # --- Computing Resources ---
-gpu_devices = [0,1,2,3,4,5,6,7]
+gpu_devices = [2]
 jobs_per_gpu = 4
 etomo_cpu_cores = 8
 
@@ -62,8 +62,8 @@ final_y_size = pipeline_params["original_x_y_size"][1] // FINAL_NEWSTACK_BIN
 
 etomo_params = {
     "setupset.copyarg.pixel": angpix / 10.0,
-    "setupset.copyarg.rotation": tilt_axis_angle,    
-    "comparam.newst.newstack.SizeToOutputInXandY": f"{final_x_size},{final_y_size}",
+    "setupset.copyarg.rotation": tilt_axis_angle,
+    # "comparam.newst.newstack.SizeToOutputInXandY": f"{final_x_size},{final_y_size}",
 }
 
 # --- eTomo Patch Size Settings ---

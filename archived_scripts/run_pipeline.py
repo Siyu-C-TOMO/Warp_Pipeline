@@ -8,7 +8,7 @@ import subprocess
 import glob
 import shutil
 import config as cfg
-from etomo_align import run_alignment
+from Warp_Pipeline.etomo_align import run_alignment
 from xml_parser import run_xml_parsing
 
 logging.basicConfig(
