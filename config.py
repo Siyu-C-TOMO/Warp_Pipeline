@@ -3,7 +3,7 @@
 # ==================================================
 # --- General Settings ---
 dataset_name = "20240328_A549TNT_EK"
-raw_directory = "/data/Microscopy/Titan/" 
+raw_directory = "/data/Microscopy/Titan" 
 # Path to where you would like to save your raw data
 # Titan2 data will be moved there and there might be no copy of your raw data in the original place
 frame_folder = "frames"
@@ -20,7 +20,7 @@ camera_type = "K3" # Switch between "K3" or "Falcon4"
 
 # --- Falcon4 Specific Settings ---
 # The source directory containing raw .eer and .eer.mdoc files
-falcon4_source_dir = "/data/Microscopy/titan2/Villa_20250820_100000_SYC"
+falcon4_source_dir = "/data/Microscopy/titan2/Villa_20250820_110000_SYC"
 falcon4_eer_ngroups = 16
 
 # --- K3 Specific Settings ---
@@ -42,7 +42,7 @@ if camera_type == "K3":
     pipeline_params["extension"] = "*.tif"
     pipeline_params["m_grid_frames"] = k3_frame_num
     pipeline_params["original_x_y_size"] = (5760, 4092)
-    extra_create_args.append("--gain_flip_y")
+    extra_create_args.append("--gain_flip_x")
 
 elif camera_type == "Falcon4":
     pipeline_params["extension"] = "*.eer"

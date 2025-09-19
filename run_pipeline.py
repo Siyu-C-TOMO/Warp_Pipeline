@@ -81,7 +81,7 @@ def run_preprocess(dataset_dir: Path, logs_dir: Path, params: dict):
         "--out_average_halves",
         "--perdevice", str(cfg.jobs_per_gpu)
     ]
-    # cmd_motion_ctf.extend(["--device_list"] + [str(d) for d in cfg.gpu_devices])
+    cmd_motion_ctf.extend(["--device_list"] + [str(d) for d in cfg.gpu_devices])
     run_command(cmd_motion_ctf, logs_dir / "motion_ctf.log", cwd=dataset_dir)
 
     logging.info("Plotting histograms of 2D processing metrics...")
