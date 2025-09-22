@@ -13,7 +13,7 @@ tomo_match_string = "pol10_2"
 
 # --- Key Acquisition Parameters ---
 angpix = 1.635
-dose = 5.161
+dose = 5
 tilt_axis_angle = -94.6
 thickness_pxl = 3000
 camera_type = "K3" # Switch between "K3" or "Falcon4"
@@ -21,7 +21,7 @@ camera_type = "K3" # Switch between "K3" or "Falcon4"
 # --- Falcon4 Specific Settings ---
 # The source directory containing raw .eer and .eer.mdoc files
 falcon4_source_dir = "/data/Microscopy/titan2/Villa_20250820_110000_SYC"
-falcon4_eer_ngroups = 16
+falcon4_eer_ngroups = 8
 
 # --- K3 Specific Settings ---
 k3_frame_num = 8
@@ -42,7 +42,7 @@ if camera_type == "K3":
     pipeline_params["extension"] = "*.tif"
     pipeline_params["m_grid_frames"] = k3_frame_num
     pipeline_params["original_x_y_size"] = (5760, 4092)
-    extra_create_args.append("--gain_flip_x")
+    extra_create_args.extend(["--gain_flip_x", "--gain_flip_y"])
 
 elif camera_type == "Falcon4":
     pipeline_params["extension"] = "*.eer"
