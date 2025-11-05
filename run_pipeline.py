@@ -22,7 +22,7 @@ def run_preprocess(dataset_dir: Path, logs_dir: Path, params: dict):
     frames_dir.mkdir(exist_ok=True)
     
     mdoc_source_path = Path(cfg.raw_directory) / cfg.dataset_name / cfg.mdoc_folder
-    for mdoc_file in mdoc_source_path.glob(f"{cfg.tomo_match_string}*_ts_???.mrc.mdoc"):
+    for mdoc_file in mdoc_source_path.glob(f"{cfg.tomo_match_string}*ts*.mrc.mdoc"):
         dest_file = dataset_dir / "mdocs" / mdoc_file.name.replace(".mrc.", ".")
         if not dest_file.exists():
             dest_file.symlink_to(mdoc_file)
@@ -48,9 +48,10 @@ def run_preprocess(dataset_dir: Path, logs_dir: Path, params: dict):
         "--extension", params["extension"],
         "--angpix", str(cfg.angpix),
         "--exposure", str(cfg.dose),
-        "--gain_path", str(gain_ref_link.relative_to(dataset_dir)),
     ]
     cmd_frame_settings.extend(params["extra_create_args"])
+    if cfg.camera_type == "K3":
+        cmd_frame_settings.extend(["--gain_path", str(gain_ref_link.relative_to(dataset_dir))])
     run_command(cmd_frame_settings, logs_dir / "frame_settings.log", cwd=dataset_dir)
 
     logging.info("Creating tilt series settings...")
@@ -62,10 +63,11 @@ def run_preprocess(dataset_dir: Path, logs_dir: Path, params: dict):
         "--folder_data", "tomostar",
         "--extension", "*.tomostar",
         "--angpix", str(cfg.angpix),
-        "--gain_path", str(gain_ref_link.relative_to(dataset_dir)),
         "--exposure", str(cfg.dose),
         "--tomo_dimensions", f"{params['original_x_y_size'][0]}x{params['original_x_y_size'][1]}x{cfg.thickness_pxl}"
     ]
+    if cfg.camera_type == "K3":
+        cmd_tilt_settings.extend(["--gain_path", str(gain_ref_link.relative_to(dataset_dir))])
     run_command(cmd_tilt_settings, logs_dir / "tilt_settings.log", cwd=dataset_dir)
 
     logging.info("Running frame series motion and CTF estimation...")
@@ -373,6 +375,7 @@ def main():
         logging.info("Falcon4 camera type detected. Checking if data reorganization is needed...")
         try:
             reorganize_falcon4_data(cfg, logs_dir)
+            logging.info("Data reorganization completed successfully.")
         except Exception as e:
             logging.critical(f"Data reorganization failed: {e}", exc_info=True)
             logging.critical("Cannot proceed with the pipeline. Please check the configuration and source directory.")

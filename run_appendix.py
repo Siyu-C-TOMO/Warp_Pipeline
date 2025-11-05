@@ -20,7 +20,7 @@ def reconstruction(log_file_path: Path):
 
     logging.info("Running WarpTools ts_reconstruct...")
     env = os.environ.copy()
-    env['WARP_FORCE_MRC_FLOAT32'] = '1'
+    # env['WARP_FORCE_MRC_FLOAT32'] = '1'
 
     cmd_reconstruct = [
         "WarpTools", "ts_reconstruct",
@@ -96,13 +96,13 @@ def isonet(log_file_path: Path):
         f"isonet.py prepare_star {tomo_folder} --output_star tomogram.star --pixel_size {pixel_size} --number_subtomos 40",
         "isonet.py make_mask tomogram.star --mask_folder mask --density_percentage 40 --std_percentage 40 --z_crop 0.14",
         "isonet.py extract tomogram.star --cube_size 64",
-        "isonet.py refine subtomo.star --gpuID 0,1,2,3,4,5,6,7 --iterations 30 --noise_level 0.1,0.15,0.2,0.25 --noise_start_iter 10,15,20,25",
+        "isonet.py refine subtomo.star --gpuID 0,1,2,3,4,5,6,7 --iterations 30 --noise_level 0.1,0.15,0.2,0.25 --noise_start_iter 10,15,20,25 --log_level info",
         "isonet.py predict tomogram.star ./results/model_iter30.h5 --gpuID 0,1,2,3,4,5,6,7 --cube_size 64 --crop_size 96",
     ]
 
     for cmd in commands:
         logging.info(f"--- Starting ISONet step: {cmd.split()[0]} ---")
-        run_command(cmd, log_file_path, cwd=isonet_dir, module_load="isonet")
+        run_command(cmd, log_file_path, cwd=isonet_dir, module_load=['isonet','cuda/11.8'])
     
     logging.info("--- All ISONet steps completed successfully. ---")
 

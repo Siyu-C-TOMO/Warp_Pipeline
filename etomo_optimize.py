@@ -275,7 +275,7 @@ class eTomoOptimizer:
         try:
             views_to_exclude, contours_to_include = self._analyze_alignment_logs()
 
-            # views_to_exclude.extend([str(i) for i in range(0, 8)])
+            # views_to_exclude.extend([str(i) for i in range(1, 9)])
             # views_to_exclude.extend([str(i) for i in range(22, 30)])
 
             self.logger.info(f'Pruning: {len(views_to_exclude)} views to exclude and {len(contours_to_include)} contours to include.')

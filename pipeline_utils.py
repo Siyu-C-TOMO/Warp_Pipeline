@@ -5,6 +5,7 @@ import subprocess
 import xml.etree.ElementTree as ET
 import numpy as np
 import pandas as pd
+import shutil
 from pathlib import Path
 from typing import List, Tuple, Iterator, Dict, Optional, Union
 
@@ -71,9 +72,24 @@ def reorganize_falcon4_data(config, logs_dir: Path):
 
     all_batches = {**file_batches, **dir_batches}
     for destination, items in all_batches.items():
-        if items:
-            cmd = ['mv', '-t', str(destination)] + items
-            run_command(cmd, reorg_log_path, verbose=False)
+        for item in items:
+            source_path = Path(item)
+            dest_path = Path(destination) / source_path.name
+            
+            if not source_path.exists():
+                logging.error(f"Source file does not exist: {item}")
+                continue
+                
+            if dest_path.exists():
+                logging.warning(f"Destination already exists: {dest_path}")
+                continue
+                
+            try:
+                shutil.move(str(source_path), str(destination))
+                logging.debug(f"Successfully moved {item} to {destination}")
+            except (shutil.Error, OSError) as e:
+                logging.error(f"Error moving {item} to {destination}: {e}")
+                continue
 
     logging.info("Reorganization Summary:")
     logging.info(f"  - Moved {counts['.eer']} .eer files to frames/")

@@ -2,33 +2,33 @@
 # ============ USER-EDITABLE SETTINGS ==============
 # ==================================================
 # --- General Settings ---
-dataset_name = "251028_HSC_2d"
-raw_directory = "/data/Microscopy/Titan/Siyu" 
+dataset_name = "20240328_A549TNT_EK"
+raw_directory = "/data/Microscopy/Titan" 
 # Path to where you would like to save your raw data
 # Titan2 data will be moved there and there might be no copy of your raw data in the original place
 frame_folder = "frames"
-mdoc_folder = "mdocs"
-gain_ref = "wrong.gain"
-tomo_match_string = "20251028_L" 
+mdoc_folder = "pacetomo"
+gain_ref = "CountRef_pol1_g1_ts_001_001_000_5.0.mrc"
+tomo_match_string = "pol10_2" 
 
 # --- Key Acquisition Parameters ---
-angpix = 0.935
-dose = 5.172
-tilt_axis_angle = 84.48
+angpix = 1.635
+dose = 5
+tilt_axis_angle = -94.6
 thickness_pxl = 3000
-camera_type = "Falcon4" # Switch between "K3" or "Falcon4"
+camera_type = "K3" # Switch between "K3" or "Falcon4"
 
 # --- Falcon4 Specific Settings ---
 # The source directory containing raw .eer and .eer.mdoc files
-falcon4_source_dir = "/data/Microscopy/titan2/Villa_20251028_100000_SYC"
-falcon4_eer_ngroups = 8
+falcon4_source_dir = "/data/Microscopy/titan2/Villa_20251001_100000_SYC"
+falcon4_eer_ngroups = 16
 
 # --- K3 Specific Settings ---
 k3_frame_num = 8
 
 # --- Computing Resources ---
-gpu_devices = [4,5,6,7]
-jobs_per_gpu = 1
+gpu_devices = [2]
+jobs_per_gpu = 4
 etomo_cpu_cores = 8
 
 # ==================================================
@@ -42,7 +42,7 @@ if camera_type == "K3":
     pipeline_params["extension"] = "*.tif"
     pipeline_params["m_grid_frames"] = k3_frame_num
     pipeline_params["original_x_y_size"] = (5760, 4092)
-    extra_create_args.append("--gain_flip_x")
+    extra_create_args.append("--gain_flip_y")
 
 elif camera_type == "Falcon4":
     pipeline_params["extension"] = "*.eer"
@@ -68,6 +68,6 @@ etomo_params = {
 
 # --- eTomo Patch Size Settings ---
 use_dynamic_patch_size = True
-patch_size_division_factor = 4
+patch_size_division_factor = 8
 possible_patch_sizes = [256, 512, 1024, 2048]
 default_patch_size = 512
