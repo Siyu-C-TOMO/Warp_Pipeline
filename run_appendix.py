@@ -66,7 +66,7 @@ def reconstruction(log_file_path: Path):
 def isonet(log_file_path: Path):
     """Run the ISONet stage of the pipeline."""
 
-    list_file = Path('ribo_list.txt')
+    list_file = Path('ribo_list_final.txt')
     if not list_file.exists():
         logging.error(f"tomogram list file does not exist in the current directory: {list_file.resolve()}")
         sys.exit(1)
@@ -76,8 +76,9 @@ def isonet(log_file_path: Path):
 
     tomo_folder = "tomoset"
     isonet_dir = Path("isonet")
+    cmd_log_dir = isonet_dir / "logs"
+    Path(cmd_log_dir).mkdir(parents=True, exist_ok=True)
     Path(isonet_dir / tomo_folder).mkdir(parents=True, exist_ok=True)
-    Path(isonet_dir / "logs").mkdir(parents=True, exist_ok=True)
 
     for tomo in tomo_list:
         source = Path(f"warp_tiltseries/tiltstack/{tomo}").resolve()
@@ -92,17 +93,22 @@ def isonet(log_file_path: Path):
             target.symlink_to(source_file)
 
     pixel_size = cfg.angpix * cfg.FINAL_NEWSTACK_BIN
+    gpu_ids = ','.join(str(d) for d in cfg.gpu_devices)
+    noise_level = ','.join(str(x) for x in cfg.isonet_params['noise_level'])
+    noise_start_iter = ','.join(str(x) for x in cfg.isonet_params['noise_start_iter'])
+    
     commands = [
-        f"isonet.py prepare_star {tomo_folder} --output_star tomogram.star --pixel_size {pixel_size} --number_subtomos 40",
-        "isonet.py make_mask tomogram.star --mask_folder mask --density_percentage 40 --std_percentage 40 --z_crop 0.14",
-        "isonet.py extract tomogram.star --cube_size 64",
-        "isonet.py refine subtomo.star --gpuID 0,1,2,3,4,5,6,7 --iterations 30 --noise_level 0.1,0.15,0.2,0.25 --noise_start_iter 10,15,20,25 --log_level info",
-        "isonet.py predict tomogram.star ./results/model_iter30.h5 --gpuID 0,1,2,3,4,5,6,7 --cube_size 64 --crop_size 96",
+        f"isonet.py prepare_star {tomo_folder} --output_star tomogram.star --pixel_size {pixel_size} --number_subtomos {cfg.isonet_params['number_subtomos']}",
+        f"isonet.py make_mask tomogram.star --mask_folder mask --density_percentage {cfg.isonet_params['density_percentage']} --std_percentage {cfg.isonet_params['std_percentage']} --z_crop {cfg.isonet_params['z_crop']}",
+        f"isonet.py extract tomogram.star --cube_size {cfg.isonet_params['cube_size']}",
+        f"isonet.py refine subtomo.star --gpuID {gpu_ids} --iterations {cfg.isonet_params['iterations']} --noise_level {noise_level} --noise_start_iter {noise_start_iter} --log_level info --batch_size {cfg.isonet_params['batch_size']}",
+        f"isonet.py predict tomogram.star ./results/model_iter{cfg.isonet_params['iterations']}.h5 --gpuID {gpu_ids} --cube_size {cfg.isonet_params['cube_size']} --crop_size {cfg.isonet_params['crop_size']} --log_level info --batch_size {cfg.isonet_params['batch_size']}",
     ]
 
-    for cmd in commands:
-        logging.info(f"--- Starting ISONet step: {cmd.split()[0]} ---")
-        run_command(cmd, log_file_path, cwd=isonet_dir, module_load=['isonet','cuda/11.8'])
+    total_steps = len(commands)
+    for i, cmd in enumerate(commands, 1):
+        logging.info(f"--- Starting ISONet step [{i}/{total_steps}]: {cmd.split()[1]} ---")
+        run_command(cmd, cmd_log_dir / f"step_{i}.log", cwd=isonet_dir, module_load='isonet')
     
     logging.info("--- All ISONet steps completed successfully. ---")
 
@@ -128,9 +134,10 @@ def cryolo(log_file_path: Path):
         f"{cmd_ini} train -c 'config_cryolo.json' -w '5' -g 1 -nc '4' --gpu_fraction '1.0' -e '10' -lft '2' --seed '10'",
         f"{cmd_ini} predict -c 'config_cryolo.json' -w 'cryolo_model_fromRelion_expand10.h5' -i tomograms -o '{output_dir}' -t '{thre}' -g '1' -d '0' -pbs '3' --gpu_fraction '1.0' -nc '4' --norm_margin '0.0' -sm 'LINE_STRAIGHTNESS' -st '0.95' -sr '1.41' -ad '10' --directional_method 'PREDICTED' -mw '100' --tomogram -tsr '-1' -tmem '0' -mn3d '2' -tmin '{connect_min}' -twin '-1' -tedge '0.4' -tmerge '0.8'"
     ]
-    for cmd in commands:
+    total_steps = len(commands)
+    for i, cmd in enumerate(commands, 1):
         step_name = cmd.split()[4] 
-        logging.info(f"--- Starting CryoLo step: {step_name} ---")
+        logging.info(f"--- Starting CryoLo step [{i}/{total_steps}]: {step_name} ---")
         run_command(cmd, log_file_path, cwd=cryolo_dir, module_load="cryolo")
     
     with open(list_file, 'r') as f:
@@ -199,7 +206,7 @@ def cryolo(log_file_path: Path):
         "--3d"
     ]
     cmd_export.extend(["--device_list"] + [str(d) for d in cfg.gpu_devices])
-    run_command(cmd_export, log_file_path, env=env, module_load="warp/2.0.0dev34")
+    run_command(cmd_export, log_file_path, env=env, module_load="warp/2.0.0dev36")
     logging.info("--- WarpTools ts_export_particles completed. ---")
 
 def main():

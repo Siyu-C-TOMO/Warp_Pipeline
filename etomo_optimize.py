@@ -49,7 +49,7 @@ except ImportError:
 
 os.environ['NUMEXPR_MAX_THREADS'] = str(NUM_CPU_CORES)
 
-VIEW_THR_SD = 2
+VIEW_THR_SD = 3
 CONTOUR_THR_SD = 2
 SIRT_ITERATIONS = 20
 
@@ -275,8 +275,9 @@ class eTomoOptimizer:
         try:
             views_to_exclude, contours_to_include = self._analyze_alignment_logs()
 
-            # views_to_exclude.extend([str(i) for i in range(1, 9)])
-            # views_to_exclude.extend([str(i) for i in range(22, 30)])
+            # if self.ts_name.startswith("20251028_L7_G2"):
+                # views_to_exclude.extend([str(i) for i in range(1, 13)])
+                # views_to_exclude.extend([str(i) for i in range(24, 30)])
 
             self.logger.info(f'Pruning: {len(views_to_exclude)} views to exclude and {len(contours_to_include)} contours to include.')
             self._prune_fiducial_model(contours_to_include)

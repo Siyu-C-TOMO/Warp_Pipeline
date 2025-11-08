@@ -16,10 +16,8 @@ def run_preprocess(dataset_dir: Path, logs_dir: Path, params: dict):
     """Runs the preprocessing stage."""
     logging.info("Starting preprocessing stage...")
     
-    logging.info("Linking data files...")
+    logging.info("Linking mdocs files...")
     (dataset_dir / "mdocs").mkdir(exist_ok=True)
-    frames_dir = dataset_dir / "frames"
-    frames_dir.mkdir(exist_ok=True)
     
     mdoc_source_path = Path(cfg.raw_directory) / cfg.dataset_name / cfg.mdoc_folder
     for mdoc_file in mdoc_source_path.glob(f"{cfg.tomo_match_string}*ts*.mrc.mdoc"):
@@ -28,21 +26,19 @@ def run_preprocess(dataset_dir: Path, logs_dir: Path, params: dict):
             dest_file.symlink_to(mdoc_file)
 
     frame_source_path = Path(cfg.raw_directory) / cfg.dataset_name / cfg.frame_folder
-    for frame_file in frame_source_path.glob(f"{cfg.tomo_match_string}*"):
-        dest_file = frames_dir / frame_file.name
-        if not dest_file.exists():
-            dest_file.symlink_to(frame_file)
 
-    gain_ref_link = prepare_gain_reference(cfg, frame_source_path, frames_dir)
-
-    if not gain_ref_link:
-        logging.critical("Gain reference preparation failed. Please check logs. Aborting preprocessing.")
-        return
+    if cfg.camera_type == "K3":
+        logging.info("Preparing gain reference for K3 camera...")
+        gain_ref_link = prepare_gain_reference(cfg, frame_source_path)
+        if not gain_ref_link:
+            logging.critical("Gain reference preparation failed. Please check logs. Aborting preprocessing.")
+            return
+        params.extra_create_args.append("--gain_path", str(gain_ref_link.resolve()))
 
     logging.info("Creating frame series settings...")
     cmd_frame_settings = [
         "WarpTools", "create_settings",
-        "--folder_data", "frames",
+        "--folder_data", frame_source_path,
         "--folder_processing", "warp_frameseries",
         "--output", "warp_frameseries.settings",
         "--extension", params["extension"],
@@ -50,8 +46,6 @@ def run_preprocess(dataset_dir: Path, logs_dir: Path, params: dict):
         "--exposure", str(cfg.dose),
     ]
     cmd_frame_settings.extend(params["extra_create_args"])
-    if cfg.camera_type == "K3":
-        cmd_frame_settings.extend(["--gain_path", str(gain_ref_link.relative_to(dataset_dir))])
     run_command(cmd_frame_settings, logs_dir / "frame_settings.log", cwd=dataset_dir)
 
     logging.info("Creating tilt series settings...")
@@ -66,8 +60,6 @@ def run_preprocess(dataset_dir: Path, logs_dir: Path, params: dict):
         "--exposure", str(cfg.dose),
         "--tomo_dimensions", f"{params['original_x_y_size'][0]}x{params['original_x_y_size'][1]}x{cfg.thickness_pxl}"
     ]
-    if cfg.camera_type == "K3":
-        cmd_tilt_settings.extend(["--gain_path", str(gain_ref_link.relative_to(dataset_dir))])
     run_command(cmd_tilt_settings, logs_dir / "tilt_settings.log", cwd=dataset_dir)
 
     logging.info("Running frame series motion and CTF estimation...")

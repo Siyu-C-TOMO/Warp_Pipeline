@@ -27,9 +27,24 @@ falcon4_eer_ngroups = 8
 k3_frame_num = 8
 
 # --- Computing Resources ---
-gpu_devices = [4,5,6,7]
-jobs_per_gpu = 1
+import os
+gpu_devices = [int(x) for x in os.environ.get('CUDA_VISIBLE_DEVICES', '0').split(',')]
+jobs_per_gpu = 4
 etomo_cpu_cores = 8
+
+# --- ISONet Settings ---
+isonet_params = {
+    "cube_size": 64,
+    "crop_size": 96,
+    "number_subtomos": 10,
+    "iterations": 30,
+    "noise_level": [0.1, 0.15, 0.2, 0.25],
+    "noise_start_iter": [10, 15, 20, 25],
+    "density_percentage": 40,
+    "std_percentage": 40,
+    "z_crop": 0.14,
+    "batch_size": 1
+}
 
 # ==================================================
 # ========= DERIVED PARAMETERS (DO NOT EDIT) =========

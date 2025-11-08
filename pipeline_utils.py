@@ -99,7 +99,7 @@ def reorganize_falcon4_data(config, logs_dir: Path):
     logging.info("Falcon4 data reorganization completed.")
 
 
-def prepare_gain_reference(config, frame_source_path: Path, frames_dir: Path) -> Optional[Path]:
+def prepare_gain_reference(config, frame_source_path: Path) -> Optional[Path]:
     """
     Finds the correct gain reference file and creates a symlink in the frames directory.
     
@@ -125,16 +125,9 @@ def prepare_gain_reference(config, frame_source_path: Path, frames_dir: Path) ->
             logging.error(f"No .gain files found in {frame_source_path}.")
             return
 
-    if gain_ref_path:
-        gain_ref_link = frames_dir / gain_ref_path.name
-        if not gain_ref_link.exists():
-            gain_ref_link.symlink_to(gain_ref_path)
-            logging.info(f"Created symlink for gain reference: {gain_ref_link}")
-        return gain_ref_link
+    return gain_ref_path
+
     
-    return None
-
-
 # --- Custom Exceptions ---
 
 class LogParsingError(Exception):
