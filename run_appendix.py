@@ -209,13 +209,44 @@ def cryolo(log_file_path: Path):
     run_command(cmd_export, log_file_path, env=env, module_load="warp/2.0.0dev36")
     logging.info("--- WarpTools ts_export_particles completed. ---")
 
+def template_match_3D(log_file_path: Path):
+    """Run the 3D template matching stage of the pipeline."""
+    template_path = Path(cfg.template_matching_params['template_path'])
+    if not template_path.exists():
+        logging.error(f"Template file does not exist: {template_path.resolve()}")
+        sys.exit(1)
+
+    list_file = Path(cfg.template_matching_params['input_data'])
+    if not list_file.exists():
+        logging.warning(f"no list file available: {list_file.resolve()}. Running with full tomoset.")
+
+    logging.info("Running WarpTools ts_template_match...")
+    env = os.environ.copy()
+    cmd_template_match = [
+        "WarpTools", "ts_template_match",
+        "--settings", "warp_tiltseries.settings",
+        "--tomo_angpix", str(cfg.template_matching_params['tomo_angpix']),
+        "--subdivisions", str(cfg.template_matching_params['subdivisions']),
+        "--template_path", str(template_path),
+        "--template_diameter", str(cfg.template_matching_params['template_diameter']),
+        "--peak_distance", str(cfg.template_matching_params['peak_distance']),
+        "--symmetry", str(cfg.template_matching_params['symmetry']),
+        "--perdevice", str(cfg.jobs_per_gpu),
+    ]
+    cmd_template_match.extend(["--device_list"] + [str(d) for d in cfg.gpu_devices])
+    if list_file.exists():
+        cmd_template_match.extend(["--input_data", str(list_file)])
+    logging.info(f"--- Starting Warp 3D template matching ---")
+    run_command(cmd_template_match, log_file_path, env=env, module_load="warp/2.0.0dev36")
+    logging.info("--- WarpTools ts_template_match completed. ---")
+
 def main():
     """Main function to initiate the appendix processing jobs."""
     parser = argparse.ArgumentParser(description="A stepwise handler for cryo-ET data processing.")
     parser.add_argument(
         '--stage',
         type=str,
-        choices=['isonet', 'cryolo', 'reconstruction'],
+        choices=['isonet', 'cryolo', 'reconstruction', '3DTM'],
         help="Which stage of the pipeline to run."
     )
     args = parser.parse_args()
@@ -248,6 +279,8 @@ def main():
             isonet(log_file_path)
         if args.stage == 'cryolo':
             cryolo(log_file_path)
+        if args.stage == '3DTM':
+            template_match_3D(log_file_path)
 
     except Exception as e:
         logging.error(f"An error occurred: {e}")
