@@ -24,6 +24,11 @@ A robust and flexible pipeline designed to streamline cryo-electron tomography (
   - [Stage 2: `etomo`](#stage-2-etomo)
   - [Stage 3: `optimize`](#stage-3-optimize)
   - [Stage 4: `postprocess`](#stage-4-postprocess)
+- [Appendix: Additional Processing Modules (`run_appendix.py`)](#appendix-additional-processing-modules-run_appendixpy)
+  - [`isonet`](#isonet)
+  - [`cryolo`](#cryolo)
+  - [`3DTM`](#3dtm)
+  - [`reconstruction`](#reconstruction)
 - [Logging System](#logging-system)
 - [License](#license)
 - [Contact](#contact)
@@ -232,6 +237,58 @@ The section below the user settings in `config.py` contains parameters that are 
     3.  Estimates the tilt-series CTF (`WarpTools ts_ctf`).
     4.  Parses the final `align_clean.com` files to update Warp's `.xml` files, ensuring bad tilts are excluded from the final reconstruction.
     5.  Performs deconvolution on the final reconstructed tomograms using IMOD's `reducefiltvol`.
+
+## Appendix: Additional Processing Modules (`run_appendix.py`)
+
+The `run_appendix.py` script provides a collection of standalone modules for downstream processing tasks that are not part of the main alignment pipeline. These tools can be run independently after the main pipeline has generated the necessary tomograms and metadata.
+
+### How to Run Appendix Modules
+
+Each module is executed by specifying its name via the `--stage` argument. Unlike the main pipeline, this script is a standard Python script and does not require the `warp_wrapper.sh`.
+
+```sh
+# General command structure
+python /path/to/Warp_Pipeline/run_appendix.py --stage <module_name>
+```
+
+**Available Modules:**
+
+*   `isonet`: Tomogram denoising using ISONet.
+*   `cryolo`: Particle picking with CryoLo and particle extraction.
+*   `3DTM`: 3D template matching using Warp.
+*   `reconstruction`: Final reconstruction and packaging for Windows.
+
+### Module Details
+
+#### `isonet`
+**Goal**: Denoise tomograms using the ISONet deep learning model.
+*   **Key Steps**:
+    1.  Reads a list of tomograms from `ribo_list_final.txt`.
+    2.  Creates symbolic links to the tomograms in a dedicated `isonet/tomoset` directory.
+    3.  Executes the ISONet training, prediction, and post-processing steps as defined in the configuration.
+
+#### `cryolo`
+**Goal**: Perform automated particle picking using a pre-trained CryoLo model.
+*   **Key Steps**:
+    1.  Requires a `cryolo` directory prepared with a trained model.
+    2.  Runs CryoLo prediction on the tomograms listed in `ribo_list_final.txt`.
+    3.  Converts the output coordinates (`.coords`) to `.star` files.
+    4.  Filters the picked particles based on a Z-coordinate range specified in `ribo_list_final.txt` to exclude particles near the top or bottom of the tomogram.
+    5.  Exports the final particle stacks using `WarpTools ts_export_particles`.
+
+#### `3DTM`
+**Goal**: Perform 3D template matching to locate macromolecules.
+*   **Key Steps**:
+    1.  Uses a template specified in `config.py`.
+    2.  Reads a list of tomograms to process.
+    3.  Runs `WarpTools ts_template_match` to perform the search and generate cross-correlation maps and peak files.
+
+#### `reconstruction`
+**Goal**: Generate a final reconstruction and package key files for easy transfer to a Windows machine.
+*   **Key Steps**:
+    1.  Runs `WarpTools ts_reconstruct` to generate the final tomogram.
+    2.  Creates a `forWindows_frames` directory.
+    3.  Creates symbolic links in this directory to the final reconstruction, average frame, `.xml` metadata, and `.tomostar` files, making it easy to archive or move the essential results.
 
 ## Logging System
 

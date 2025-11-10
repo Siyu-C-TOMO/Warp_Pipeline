@@ -10,7 +10,26 @@ from pathlib import Path
 
 import etomo_align
 import config as cfg
-from pipeline_utils import run_command, update_xml_files_from_com, reorganize_falcon4_data, calculate_patch_size, prepare_gain_reference
+from pipeline_utils import (
+    run_command, 
+    update_xml_files_from_com, 
+    reorganize_falcon4_data, 
+    calculate_patch_size, 
+    prepare_gain_reference
+)
+from command_builder import (
+    build_frame_settings_command,
+    build_tilt_settings_command,
+    build_motion_ctf_command,
+    build_histograms_command,
+    build_ts_import_command,
+    build_ts_etomo_patches_command,
+    build_ts_stack_command,
+    build_import_align_command,
+    build_hand_check_command,
+    build_hand_flip_command,
+    build_ts_ctf_command,
+)
 
 def run_preprocess(dataset_dir: Path, logs_dir: Path, params: dict):
     """Runs the preprocessing stage."""
@@ -36,54 +55,20 @@ def run_preprocess(dataset_dir: Path, logs_dir: Path, params: dict):
         params.extra_create_args.append("--gain_path", str(gain_ref_link.resolve()))
 
     logging.info("Creating frame series settings...")
-    cmd_frame_settings = [
-        "WarpTools", "create_settings",
-        "--folder_data", frame_source_path,
-        "--folder_processing", "warp_frameseries",
-        "--output", "warp_frameseries.settings",
-        "--extension", params["extension"],
-        "--angpix", str(cfg.angpix),
-        "--exposure", str(cfg.dose),
-    ]
-    cmd_frame_settings.extend(params["extra_create_args"])
+    cmd_frame_settings = build_frame_settings_command(frame_source_path, params)
     run_command(cmd_frame_settings, logs_dir / "frame_settings.log", cwd=dataset_dir)
 
     logging.info("Creating tilt series settings...")
     (dataset_dir / "tomostar").mkdir(exist_ok=True)
-    cmd_tilt_settings = [
-        "WarpTools", "create_settings",
-        "--output", "warp_tiltseries.settings",
-        "--folder_processing", "warp_tiltseries",
-        "--folder_data", "tomostar",
-        "--extension", "*.tomostar",
-        "--angpix", str(cfg.angpix),
-        "--exposure", str(cfg.dose),
-        "--tomo_dimensions", f"{params['original_x_y_size'][0]}x{params['original_x_y_size'][1]}x{cfg.thickness_pxl}"
-    ]
+    cmd_tilt_settings = build_tilt_settings_command(params)
     run_command(cmd_tilt_settings, logs_dir / "tilt_settings.log", cwd=dataset_dir)
 
     logging.info("Running frame series motion and CTF estimation...")
-    cmd_motion_ctf = [
-        "WarpTools", "fs_motion_and_ctf",
-        "--settings", "warp_frameseries.settings",
-        "--m_grid", f"1x1x{params['m_grid_frames']}",
-        "--c_grid", "2x2x1",
-        "--c_range_max", "7",
-        "--c_defocus_max", "8",
-        "--c_use_sum",
-        "--out_averages",
-        "--out_average_halves",
-        "--perdevice", str(cfg.jobs_per_gpu)
-    ]
-    cmd_motion_ctf.extend(["--device_list"] + [str(d) for d in cfg.gpu_devices])
+    cmd_motion_ctf = build_motion_ctf_command(params, cfg.jobs_per_gpu, cfg.gpu_devices)
     run_command(cmd_motion_ctf, logs_dir / "motion_ctf.log", cwd=dataset_dir)
 
     logging.info("Plotting histograms of 2D processing metrics...")
-    cmd_histograms = [
-        "WarpTools", "filter_quality",
-        "--settings", "warp_frameseries.settings",
-        "--histograms"
-    ]
+    cmd_histograms = build_histograms_command()
     run_command(cmd_histograms, logs_dir / "histograms.log", cwd=dataset_dir)
 
     logging.info("Preprocessing stage completed.")
@@ -92,15 +77,7 @@ def run_ts_import(dataset_dir: Path, logs_dir: Path):
     """Runs the tilt series import stage."""
     logging.info("Importing tilt series metadata...")
     
-    cmd_ts_import = [
-        "WarpTools", "ts_import",
-        "--mdocs", "mdocs",
-        "--frameseries", "warp_frameseries",
-        "--tilt_exposure", str(cfg.dose),
-        "--dont_invert",
-        "--override_axis", str(cfg.tilt_axis_angle),
-        "--output", "tomostar"
-    ]
+    cmd_ts_import = build_ts_import_command()
     run_command(cmd_ts_import, logs_dir / "tomostar.log", cwd=dataset_dir)
     
     logging.info("Tilt series import stage completed.")
@@ -122,17 +99,7 @@ def run_builtin_etomo(dataset_dir: Path, logs_dir: Path):
 
     patch_size = calculate_patch_size(cfg)
 
-    cmd_ts_etomo = [
-        "WarpTools", "ts_etomo_patches",
-        "--settings", "warp_tiltseries.settings",
-        "--angpix", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
-        "--initial_axis", str(cfg.tilt_axis_angle), 
-        # "--do_axis_search",
-        #"--input_data", "tomostar/L2_G1_ts_003.tomostar",
-        "--patch_size", str(patch_size),
-        "--perdevice", str(cfg.jobs_per_gpu * 2)
-    ]
-    cmd_ts_etomo.extend(["--device_list"] + [str(d) for d in cfg.gpu_devices])
+    cmd_ts_etomo = build_ts_etomo_patches_command(patch_size, cfg.jobs_per_gpu, cfg.gpu_devices)
     run_command(cmd_ts_etomo, logs_dir / "etomo_patches.log", cwd=dataset_dir, env=env)
 
     logging.info("Patched eTomo test stage completed.")
@@ -144,10 +111,7 @@ def run_custom_etomo(dataset_dir: Path, logs_dir: Path):
     run_ts_import(dataset_dir, logs_dir)
 
     logging.info("Making tilt stacks...")
-    cmd_ts_stack = [
-        "WarpTools", "ts_stack",
-        "--settings", "warp_tiltseries.settings"
-    ]
+    cmd_ts_stack = build_ts_stack_command()
     run_command(cmd_ts_stack, logs_dir / "tiltstack.log", cwd=dataset_dir)
 
     original_dir = dataset_dir.resolve()
@@ -216,43 +180,23 @@ def run_postprocess(dataset_dir: Path, logs_dir: Path):
                             break
 
     logging.info("Importing improved alignments...")
-    cmd_import_align = [
-        "WarpTools", "ts_import_alignments",
-        "--settings", "warp_tiltseries.settings",
-        "--alignments", "warp_tiltseries/tiltstack/",
-        "--alignment_angpix", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
-    ]
+    cmd_import_align = build_import_align_command()
     run_command(cmd_import_align, logs_dir / "import_align.log", cwd=dataset_dir)
 
     logging.info("Checking defocus handedness...")
-    cmd_hand_check = [
-        "WarpTools", "ts_defocus_hand",
-        "--settings", "warp_tiltseries.settings",
-        "--check"
-    ]
+    cmd_hand_check = build_hand_check_command()
     result = subprocess.run(cmd_hand_check, check=True, capture_output=True, text=True, cwd=dataset_dir)
     (logs_dir / "handness.log").write_text(result.stdout)
     
     if "no flip" not in result.stdout:
         logging.info("Flipping tomograms...")
-        cmd_hand_flip = [
-            "WarpTools", "ts_defocus_hand",
-            "--settings", "warp_tiltseries.settings",
-            "--set_flip"
-        ]
+        cmd_hand_flip = build_hand_flip_command()
         run_command(cmd_hand_flip, logs_dir / "flipped.log", cwd=dataset_dir)
     else:
         logging.info("No need to flip tomograms.")
 
     logging.info("Estimating tilt series CTF...")
-    cmd_ts_ctf = [
-        "WarpTools", "ts_ctf",
-        "--settings", "warp_tiltseries.settings",
-        "--range_high", "7",
-        "--defocus_max", "8",
-        "--perdevice", str(cfg.jobs_per_gpu)
-    ]
-    cmd_ts_ctf.extend(["--device_list"] + [str(d) for d in cfg.gpu_devices])
+    cmd_ts_ctf = build_ts_ctf_command(cfg.jobs_per_gpu, cfg.gpu_devices)
     run_command(cmd_ts_ctf, logs_dir / "tomo_ctf.log", cwd=dataset_dir)
 
     # --- XML Parsing with isolated logging ---

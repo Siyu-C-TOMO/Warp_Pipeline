@@ -385,3 +385,31 @@ def calculate_patch_size(config) -> int:
     logging.info(f"  - Selected patch size from list {config.possible_patch_sizes}: {final_patch_size}")
     
     return int(final_patch_size)
+
+
+# --- Star File Processing ---
+
+def filter_star_file(input_path: Path, output_path: Path, z_range: tuple[float, float]):
+    """Filters a star file based on a Z-coordinate range."""
+    try:
+        start, end = z_range
+        with open(input_path, 'r') as infile, open(output_path, 'w') as outfile:
+            for star_line in infile:
+                parts = star_line.split()
+                if len(parts) < 4:
+                    outfile.write(star_line)
+                    continue
+                try:
+                    z_coord = float(parts[3])
+                    if start <= z_coord <= end:
+                        outfile.write(star_line)
+                except ValueError:
+                    outfile.write(star_line)
+        logging.info(f"Successfully filtered {input_path}")
+        return True
+    except FileNotFoundError:
+        logging.error(f"Could not find the star file to filter: {input_path}")
+        return False
+    except Exception as e:
+        logging.error(f"An error occurred during star file filtering: {e}")
+        return False

@@ -87,6 +87,12 @@ isonet_params = {
     "batch_size": len(gpu_devices)
 }
 
+# --- Cryolo Settings ---
+cryolo_params = {
+    "threshold": 0.25,
+    "min_connections": 5,
+}
+
 # --- 3D template matching Settings ---
 template_matching_params = {
     "tomo_angpix": angpix * FINAL_NEWSTACK_BIN,

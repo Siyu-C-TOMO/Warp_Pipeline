@@ -7,8 +7,15 @@ import os
 from pathlib import Path
 
 import config as cfg
+from pipeline_utils import run_command, filter_star_file
+from command_builder import (
+    build_reconstruction_command,
+    build_isonet_commands,
+    build_cryolo_commands,
+    build_particle_export_command,
+    build_template_match_command,
+)
 
-from pipeline_utils import run_command
 
 def reconstruction(log_file_path: Path):
     """Runs the final reconstruction and packaging stage for Windows compatibility."""
@@ -20,16 +27,8 @@ def reconstruction(log_file_path: Path):
 
     logging.info("Running WarpTools ts_reconstruct...")
     env = os.environ.copy()
-    # env['WARP_FORCE_MRC_FLOAT32'] = '1'
-
-    cmd_reconstruct = [
-        "WarpTools", "ts_reconstruct",
-        "--settings", "warp_tiltseries.settings",
-        "--angpix", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
-        "--perdevice", str(cfg.jobs_per_gpu)
-        #"--input_data", "tomostar/L2_G1_ts_007.tomostar"
-    ]
-    cmd_reconstruct.extend(["--device_list"] + [str(d) for d in cfg.gpu_devices])
+    
+    cmd_reconstruct = build_reconstruction_command(cfg.jobs_per_gpu, cfg.gpu_devices)
     run_command(cmd_reconstruct, log_file_path, env=env)
 
     logging.info(f"Linking result files into {win_dir}...")
@@ -45,7 +44,6 @@ def reconstruction(log_file_path: Path):
     for link_name, target_path in link_pairs.items():
         dest_link = win_dir / link_name
         if not dest_link.exists() and target_path.exists():
-            # Create relative symlink
             relative_target = os.path.relpath(target_path.resolve(), win_dir.resolve())
             dest_link.symlink_to(relative_target)
 
@@ -65,7 +63,6 @@ def reconstruction(log_file_path: Path):
 
 def isonet(log_file_path: Path):
     """Run the ISONet stage of the pipeline."""
-
     list_file = Path('ribo_list_final.txt')
     if not list_file.exists():
         logging.error(f"tomogram list file does not exist in the current directory: {list_file.resolve()}")
@@ -83,28 +80,15 @@ def isonet(log_file_path: Path):
     for tomo in tomo_list:
         source = Path(f"warp_tiltseries/tiltstack/{tomo}").resolve()
         target = isonet_dir / tomo_folder / f"{tomo}.mrc"
-
-        source_file = list(source.glob("*dev.mrc"))[0]
-        if not source_file:
+        source_files = list(source.glob("*dev.mrc"))
+        if not source_files:
             logging.warning(f"No _dev.mrc file found for tomogram {tomo}")
             continue
-
         if not target.exists():
-            target.symlink_to(source_file)
+            target.symlink_to(source_files[0])
 
-    pixel_size = cfg.angpix * cfg.FINAL_NEWSTACK_BIN
-    gpu_ids = ','.join(str(d) for d in cfg.gpu_devices)
-    noise_level = ','.join(str(x) for x in cfg.isonet_params['noise_level'])
-    noise_start_iter = ','.join(str(x) for x in cfg.isonet_params['noise_start_iter'])
+    commands = build_isonet_commands(cfg.isonet_params, cfg.gpu_devices, tomo_folder)
     
-    commands = [
-        f"isonet.py prepare_star {tomo_folder} --output_star tomogram.star --pixel_size {pixel_size} --number_subtomos {cfg.isonet_params['number_subtomos']}",
-        f"isonet.py make_mask tomogram.star --mask_folder mask --density_percentage {cfg.isonet_params['density_percentage']} --std_percentage {cfg.isonet_params['std_percentage']} --z_crop {cfg.isonet_params['z_crop']}",
-        f"isonet.py extract tomogram.star --cube_size {cfg.isonet_params['cube_size']}",
-        f"isonet.py refine subtomo.star --gpuID {gpu_ids} --iterations {cfg.isonet_params['iterations']} --noise_level {noise_level} --noise_start_iter {noise_start_iter} --log_level info --batch_size {cfg.isonet_params['batch_size']}",
-        f"isonet.py predict tomogram.star ./results/model_iter{cfg.isonet_params['iterations']}.h5 --gpuID {gpu_ids} --cube_size {cfg.isonet_params['cube_size']} --crop_size {cfg.isonet_params['crop_size']} --log_level info --batch_size {cfg.isonet_params['batch_size']}",
-    ]
-
     total_steps = len(commands)
     for i, cmd in enumerate(commands, 1):
         logging.info(f"--- Starting ISONet step [{i}/{total_steps}]: {cmd.split()[1]} ---")
@@ -124,16 +108,8 @@ def cryolo(log_file_path: Path):
         logging.error(f"tomogram list file does not exist in the current directory: {list_file.resolve()}")
         sys.exit(1)
 
-    cryolo_ad = "/software/repo/rhel9/cryolo/1.9.4/bin"
-    cmd_ini = f"'{cryolo_ad}/python3.8' -u '{cryolo_ad}/cryolo_gui.py' --ignore-gooey"
-    thre = 0.25
-    connect_min = 5
-    output_dir = Path("expand10_0p25_5")
-    commands = [
-        f"{cmd_ini} config --train_image_folder '3DTM_pre/tomograms' --train_annot_folder '3DTM_pre/CBOX' --saved_weights_name 'cryolo_model_fromRelion_expand10.h5' -a 'PhosaurusNet' --input_size 1024 -nm 'STANDARD' --num_patches '1' --overlap_patches '200' --filtered_output 'filtered_tmp/' -f 'LOWPASS' --low_pass_cutoff '0.1' --janni_overlap '24' --janni_batches '3' --train_times '10' --batch_size '4' --learning_rate '0.0001' --nb_epoch '200' --object_scale '5.0' --no_object_scale '1.0' --coord_scale '1.0' --class_scale '1.0' --debug --log_path 'logs/' -- 'config_cryolo.json' '64'",
-        f"{cmd_ini} train -c 'config_cryolo.json' -w '5' -g 1 -nc '4' --gpu_fraction '1.0' -e '10' -lft '2' --seed '10'",
-        f"{cmd_ini} predict -c 'config_cryolo.json' -w 'cryolo_model_fromRelion_expand10.h5' -i tomograms -o '{output_dir}' -t '{thre}' -g '1' -d '0' -pbs '3' --gpu_fraction '1.0' -nc '4' --norm_margin '0.0' -sm 'LINE_STRAIGHTNESS' -st '0.95' -sr '1.41' -ad '10' --directional_method 'PREDICTED' -mw '100' --tomogram -tsr '-1' -tmem '0' -mn3d '2' -tmin '{connect_min}' -twin '-1' -tedge '0.4' -tmerge '0.8'"
-    ]
+    commands, output_dir = build_cryolo_commands(cfg.cryolo_params)
+
     total_steps = len(commands)
     for i, cmd in enumerate(commands, 1):
         step_name = cmd.split()[4] 
@@ -146,66 +122,32 @@ def cryolo(log_file_path: Path):
             logging.info(f"Processing tomogram: {tomo}")
 
             coords_file = f"COORDS/{tomo}.coords"
-            raw_star_file = f"STAR/{tomo}"
-            (cryolo_dir / output_dir / "STAR" / tomo).mkdir(parents=True, exist_ok=True)
+            raw_star_dir = cryolo_dir / output_dir / "STAR" / tomo
+            raw_star_dir.mkdir(parents=True, exist_ok=True)
+            raw_star_file = raw_star_dir / "particles_warp.star"
 
-            cmd = [
+            cmd_coords = [
                 "cryolo_boxmanager_tools.py", "coords2star",
-                "-i", coords_file, "-o", raw_star_file,
+                "-i", str(cryolo_dir / output_dir / coords_file),
+                "-o", str(raw_star_file),
                 "--apix", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN)
             ]
-            run_command(cmd, log_file_path, cwd=cryolo_dir / output_dir, module_load="cryolo")
+            run_command(cmd_coords, log_file_path, cwd=cryolo_dir / output_dir, module_load="cryolo")
 
-            input_star_path = cryolo_dir / output_dir / raw_star_file / "particles_warp.star"
-            filtered_star_file = f"STAR/{tomo}.star"
-            output_star_path = cryolo_dir / output_dir / filtered_star_file
+            filtered_star_file = cryolo_dir / output_dir / "STAR" / f"{tomo}.star"
+            logging.info(f"Filtering {raw_star_file} to {filtered_star_file} with range {start_str}-{end_str}")
             
-            logging.info(f"Filtering {input_star_path} to {output_star_path} with range {start_str}-{end_str}")
-
             try:
-                start, end = float(start_str), float(end_str)
-                with open(input_star_path, 'r') as infile, open(output_star_path, 'w') as outfile:
-                    for star_line in infile:
-                        parts = star_line.split()
-                        if len(parts) < 4:
-                            outfile.write(star_line)
-                            continue
-                        try:
-                            z_coord = float(parts[3])
-                            if start <= z_coord <= end:
-                                outfile.write(star_line)
-                        except ValueError:
-                            outfile.write(star_line)
-                logging.info(f"Successfully filtered {input_star_path}")
-            except FileNotFoundError:
-                logging.error(f"Could not find the star file to filter: {input_star_path}")
-            except Exception as e:
-                logging.error(f"An error occurred during star file filtering for {tomo}: {e}")
+                z_range = (float(start_str), float(end_str))
+                filter_star_file(raw_star_file, filtered_star_file, z_range)
+            except ValueError:
+                logging.error(f"Invalid range for tomogram {tomo}: {start_str}-{end_str}")
 
     logging.info("--- Starting WarpTools ts_export_particles ---")
-    
     env = os.environ.copy()
     env['WARP_FORCE_MRC_FLOAT32'] = '1'
     
-    angpix = cfg.angpix * cfg.FINAL_NEWSTACK_BIN
-    
-    cmd_export = [
-        "WarpTools", "ts_export_particles",
-        "--settings", "warp_tiltseries.settings",
-        "--input_directory", f"{cryolo_dir}/{output_dir}/STAR/",
-        "--input_processing", "warp_tiltseries",
-        "--input_pattern", "*.star",
-        "--coords_angpix", str(angpix),
-        "--output_star", f"relion32_cryolo_expand/cryolo_{output_dir}.star",
-        "--output_angpix", str(angpix),
-        "--output_processing", "relion32_cryolo_expand/",
-        "--box", "72",
-        "--diameter", "350",
-        "--relative_output_paths",
-        "--perdevice", str(cfg.jobs_per_gpu),
-        "--3d"
-    ]
-    cmd_export.extend(["--device_list"] + [str(d) for d in cfg.gpu_devices])
+    cmd_export = build_particle_export_command(cryolo_dir, output_dir, cfg.jobs_per_gpu, cfg.gpu_devices)
     run_command(cmd_export, log_file_path, env=env, module_load="warp/2.0.0dev36")
     logging.info("--- WarpTools ts_export_particles completed. ---")
 
@@ -222,20 +164,10 @@ def template_match_3D(log_file_path: Path):
 
     logging.info("Running WarpTools ts_template_match...")
     env = os.environ.copy()
-    cmd_template_match = [
-        "WarpTools", "ts_template_match",
-        "--settings", "warp_tiltseries.settings",
-        "--tomo_angpix", str(cfg.template_matching_params['tomo_angpix']),
-        "--subdivisions", str(cfg.template_matching_params['subdivisions']),
-        "--template_path", str(template_path),
-        "--template_diameter", str(cfg.template_matching_params['template_diameter']),
-        "--peak_distance", str(cfg.template_matching_params['peak_distance']),
-        "--symmetry", str(cfg.template_matching_params['symmetry']),
-        "--perdevice", str(cfg.jobs_per_gpu),
-    ]
-    cmd_template_match.extend(["--device_list"] + [str(d) for d in cfg.gpu_devices])
-    if list_file.exists():
-        cmd_template_match.extend(["--input_data", str(list_file)])
+    cmd_template_match = build_template_match_command(
+        cfg.template_matching_params, cfg.jobs_per_gpu, cfg.gpu_devices
+    )
+    
     logging.info(f"--- Starting Warp 3D template matching ---")
     run_command(cmd_template_match, log_file_path, env=env, module_load="warp/2.0.0dev36")
     logging.info("--- WarpTools ts_template_match completed. ---")
@@ -273,14 +205,14 @@ def main():
         )
         logging.info(f"Main log file for this run is: {log_file_path.resolve()}")
 
-        if args.stage == 'reconstruction':
-            reconstruction(log_file_path)
-        if args.stage == 'isonet':
-            isonet(log_file_path)
-        if args.stage == 'cryolo':
-            cryolo(log_file_path)
-        if args.stage == '3DTM':
-            template_match_3D(log_file_path)
+        stage_map = {
+            'reconstruction': reconstruction,
+            'isonet': isonet,
+            'cryolo': cryolo,
+            '3DTM': template_match_3D,
+        }
+        if args.stage in stage_map:
+            stage_map[args.stage](log_file_path)
 
     except Exception as e:
         logging.error(f"An error occurred: {e}")
