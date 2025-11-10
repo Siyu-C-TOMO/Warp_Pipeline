@@ -1,20 +1,4 @@
 #!/usr/bin/env python3
-#
-# Wrapper for batchtomo
-#
-# This script is designed to be called by a pipeline manager. It iterates
-# through tomogram directories, identifies high-residual views and contours,
-# and re-runs alignment and reconstruction steps to optimize the output.
-#
-# Refactoring (July 2025):
-# - Encapsulated the logic for processing a single tomogram into an
-#   `eTomoOptimizer` class to improve structure, maintainability, and safety.
-# - Replaced os.path with pathlib for modern, object-oriented path handling.
-# - Centralized configuration and hardcoded values into constants.
-# - Improved function/method names, typing, and documentation.
-# - Enhanced error handling and logging within the class structure.
-# - Made log file parsing robust by reading headers instead of using fixed column indices.
-
 import os
 import pandas as pd
 from multiprocessing import Pool

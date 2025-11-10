@@ -241,7 +241,6 @@ def _edit_mrcxml_usetilts(xml_path: Path, excludelist: np.ndarray):
     if excludelist.size > 0:
         xml_logger.info(f"Found {len(excludelist)} tilts to exclude in {xml_path.name}.")
         
-        # Account for 0-based indexing vs 1-based in eTomo
         exclude_indices = excludelist - 1
         
         use_tilts_list = use_tilt_element.text.strip().split()

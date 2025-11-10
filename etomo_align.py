@@ -6,11 +6,6 @@ import config as cfg
 import subprocess
 from default_adoc import PARAMS as default_adoc_params
 
-# thresholds for pruning views and contours
-view_thr_sd = 2
-contour_thr_sd = 2
-
-
 ####################################
 ####### FUNCTION BLOCK BELOW #######
 
