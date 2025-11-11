@@ -116,7 +116,7 @@ def cryolo(log_file_path: Path):
     for i, cmd in enumerate(commands, 1):
         step_name = cmd.split()[4] 
         logging.info(f"--- Starting CryoLo step [{i}/{total_steps}]: {step_name} ---")
-        # run_command(cmd, cmd_log_dir / f"step_{i}.log", cwd=cryolo_dir, module_load="cryolo")
+        run_command(cmd, cmd_log_dir / f"step_{i}.log", cwd=cryolo_dir, module_load="cryolo")
     
     with open(list_file, 'r') as f:
         to_star_log_dir = cmd_log_dir / "to_star"
