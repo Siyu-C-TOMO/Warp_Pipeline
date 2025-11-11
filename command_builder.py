@@ -30,19 +30,21 @@ def build_isonet_commands(isonet_params, gpu_devices, tomo_folder="tomoset"):
     ]
     return commands
 
-def build_cryolo_commands(cryolo_params):
+def build_cryolo_commands(cryolo_params, gpu_devices):
     """Builds the list of commands for the Cryolo stage."""
     threshold = cryolo_params['threshold']
     min_connections = cryolo_params['min_connections']
-    
+    batch_size = cryolo_params['batch_size']
+    gpu_ids = ' '.join(str(d) for d in gpu_devices)
+    cpu = '32'
     cryolo_ad = "/software/repo/rhel9/cryolo/1.9.4/bin"
     cmd_ini = f"'{cryolo_ad}/python3.8' -u '{cryolo_ad}/cryolo_gui.py' --ignore-gooey"
     output_dir = Path(f"expand10_{threshold}_{min_connections}")
 
     commands = [
-        f"{cmd_ini} config --train_image_folder '3DTM_pre/tomograms' --train_annot_folder '3DTM_pre/CBOX' --saved_weights_name 'cryolo_model_fromRelion_expand10.h5' -a 'PhosaurusNet' --input_size 1024 -nm 'STANDARD' --num_patches '1' --overlap_patches '200' --filtered_output 'filtered_tmp/' -f 'LOWPASS' --low_pass_cutoff '0.1' --janni_overlap '24' --janni_batches '3' --train_times '10' --batch_size '4' --learning_rate '0.0001' --nb_epoch '200' --object_scale '5.0' --no_object_scale '1.0' --coord_scale '1.0' --class_scale '1.0' --debug --log_path 'logs/' -- 'config_cryolo.json' '64'",
-        f"{cmd_ini} train -c 'config_cryolo.json' -w '5' -g 1 -nc '4' --gpu_fraction '1.0' -e '10' -lft '2' --seed '10'",
-        f"{cmd_ini} predict -c 'config_cryolo.json' -w 'cryolo_model_fromRelion_expand10.h5' -i tomograms -o '{output_dir}' -t '{threshold}' -g '1' -d '0' -pbs '3' --gpu_fraction '1.0' -nc '4' --norm_margin '0.0' -sm 'LINE_STRAIGHTNESS' -st '0.95' -sr '1.41' -ad '10' --directional_method 'PREDICTED' -mw '100' --tomogram -tsr '-1' -tmem '0' -mn3d '2' -tmin '{min_connections}' -twin '-1' -tedge '0.4' -tmerge '0.8'"
+        f"{cmd_ini} config --train_image_folder '3DTM_pre/tomograms' --train_annot_folder '3DTM_pre/CBOX' --saved_weights_name 'cryolo_model_fromRelion_expand10.h5' -a 'PhosaurusNet' --input_size 1024 -nm 'STANDARD' --num_patches '1' --overlap_patches '200' --filtered_output 'filtered_tmp/' -f 'LOWPASS' --low_pass_cutoff '0.1' --janni_overlap '24' --janni_batches '3' --train_times '10' --batch_size '{batch_size}' --learning_rate '0.0001' --nb_epoch '200' --object_scale '5.0' --no_object_scale '1.0' --coord_scale '1.0' --class_scale '1.0' --debug --log_path 'logs/' -- 'config_cryolo.json' '64'",
+        f"{cmd_ini} train -c 'config_cryolo.json' -w '5' -g {gpu_ids} -nc {cpu} --gpu_fraction '1.0' -e '10' -lft '2' --seed '10'",
+        f"{cmd_ini} predict -c 'config_cryolo.json' -w 'cryolo_model_fromRelion_expand10.h5' -i tomograms -o '{output_dir}' -t '{threshold}' -g {gpu_ids} -d '0' -pbs '3' --gpu_fraction '1.0' -nc {cpu} --norm_margin '0.0' -sm 'LINE_STRAIGHTNESS' -st '0.95' -sr '1.41' -ad '10' --directional_method 'PREDICTED' -mw '100' --tomogram -tsr '-1' -tmem '0' -mn3d '2' -tmin '{min_connections}' -twin '-1' -tedge '0.4' -tmerge '0.8'"
     ]
     return commands, output_dir
 

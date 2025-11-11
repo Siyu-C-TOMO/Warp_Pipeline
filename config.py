@@ -91,6 +91,7 @@ isonet_params = {
 cryolo_params = {
     "threshold": 0.25,
     "min_connections": 5,
+    "batch_size": len(gpu_devices)*2
 }
 
 # --- 3D template matching Settings ---

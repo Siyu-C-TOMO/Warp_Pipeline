@@ -108,15 +108,20 @@ def cryolo(log_file_path: Path):
         logging.error(f"tomogram list file does not exist in the current directory: {list_file.resolve()}")
         sys.exit(1)
 
-    commands, output_dir = build_cryolo_commands(cfg.cryolo_params)
-
+    commands, output_dir = build_cryolo_commands(cfg.cryolo_params, cfg.gpu_devices)
+    
+    cmd_log_dir = cryolo_dir / "logs"
+    Path(cmd_log_dir).mkdir(parents=True, exist_ok=True)
     total_steps = len(commands)
     for i, cmd in enumerate(commands, 1):
         step_name = cmd.split()[4] 
         logging.info(f"--- Starting CryoLo step [{i}/{total_steps}]: {step_name} ---")
-        run_command(cmd, log_file_path, cwd=cryolo_dir, module_load="cryolo")
+        # run_command(cmd, cmd_log_dir / f"step_{i}.log", cwd=cryolo_dir, module_load="cryolo")
     
     with open(list_file, 'r') as f:
+        to_star_log_dir = cmd_log_dir / "to_star"
+        Path(to_star_log_dir).mkdir(parents=True, exist_ok=True)
+
         for line in f.readlines():
             tomo, start_str, end_str, _ = line.strip().split()
             logging.info(f"Processing tomogram: {tomo}")
@@ -129,10 +134,10 @@ def cryolo(log_file_path: Path):
             cmd_coords = [
                 "cryolo_boxmanager_tools.py", "coords2star",
                 "-i", str(cryolo_dir / output_dir / coords_file),
-                "-o", str(raw_star_file),
+                "-o", str(raw_star_dir),
                 "--apix", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN)
             ]
-            run_command(cmd_coords, log_file_path, cwd=cryolo_dir / output_dir, module_load="cryolo")
+            run_command(cmd_coords, to_star_log_dir / f"{tomo}.log", module_load="cryolo")
 
             filtered_star_file = cryolo_dir / output_dir / "STAR" / f"{tomo}.star"
             logging.info(f"Filtering {raw_star_file} to {filtered_star_file} with range {start_str}-{end_str}")
@@ -148,7 +153,7 @@ def cryolo(log_file_path: Path):
     env['WARP_FORCE_MRC_FLOAT32'] = '1'
     
     cmd_export = build_particle_export_command(cryolo_dir, output_dir, cfg.jobs_per_gpu, cfg.gpu_devices)
-    run_command(cmd_export, log_file_path, env=env, module_load="warp/2.0.0dev36")
+    run_command(cmd_export, cmd_log_dir / "export.log", env=env, module_load="warp/2.0.0dev36")
     logging.info("--- WarpTools ts_export_particles completed. ---")
 
 def template_match_3D(log_file_path: Path):
