@@ -117,7 +117,7 @@ def build_tilt_settings_command(params):
         "--extension", "*.tomostar",
         "--angpix", str(cfg.angpix),
         "--exposure", str(cfg.dose),
-        "--tomo_dimensions", f"{params['original_x_y_size'][0]}x{params['original_x_y_size'][1]}x{cfg.thickness_pxl}"
+        "--tomo_dimensions", f"{params['original_x_y_size'][1]}x{params['original_x_y_size'][0]}x{cfg.thickness_pxl}"
     ]
 
 def build_motion_ctf_command(params, jobs_per_gpu, gpu_devices):

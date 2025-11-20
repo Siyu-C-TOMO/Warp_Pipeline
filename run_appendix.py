@@ -16,6 +16,11 @@ from command_builder import (
     build_template_match_command,
 )
 
+try:
+    from star_handler.modules.processors.relion2cbox import Relion2CboxProcessor
+except ImportError:
+    logging.warning("Could not import star_handler. Automatic Relion2Cbox processing will be disabled.")
+    Relion2CboxProcessor = None
 
 def reconstruction(log_file_path: Path):
     """Runs the final reconstruction and packaging stage for Windows compatibility."""
@@ -98,10 +103,25 @@ def isonet(log_file_path: Path):
 
 def cryolo(log_file_path: Path):
     """Run the Cryolo stage of the pipeline."""
-    cryolo_dir = Path("cryolo")
+    cryolo_dir = Path("cryolo")    
     if not cryolo_dir.exists():
-        logging.error(f"No cryolo directory. Run star-handler process-relion2cryolo first.")
-        sys.exit(1)
+        if cfg.cryolo_params['prep']["enable"] and Relion2CboxProcessor:
+            logging.info("Cryolo directory not found. Auto-running Relion2CboxProcessor...")
+            try:
+                processor = Relion2CboxProcessor(
+                    star_file=cfg.cryolo_params['prep']['star_file'],
+                    bin_factor=cfg.cryolo_params['prep']['bin_factor']
+                )
+                processor.process()
+                logging.info("Relion2CboxProcessor completed successfully.")
+            except Exception as e:
+                logging.error(f"Auto-prep failed: {e}")
+                sys.exit(1)
+        else:
+            reason = "Auto-prep is disabled" if not cfg.cryolo_params['prep']["enable"] else "star_handler not imported"
+            logging.error(f"Cryolo directory missing and cannot auto-fix ({reason}).")
+            logging.error("Please run 'star-handler process-relion2cryolo' manually or check your config.")
+            sys.exit(1)
 
     list_file = Path('ribo_list_final.txt')
     if not list_file.exists():

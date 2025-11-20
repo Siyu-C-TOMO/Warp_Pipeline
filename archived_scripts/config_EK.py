@@ -9,7 +9,7 @@ raw_directory = "/data/Microscopy/Titan"
 frame_folder = "frames"
 mdoc_folder = "pacetomo"
 gain_ref = "CountRef_pol1_g1_ts_001_001_000_5.0.mrc"
-tomo_match_string = "pol10_2" 
+tomo_match_string = "pol" 
 
 # --- Key Acquisition Parameters ---
 angpix = 1.635
@@ -30,7 +30,33 @@ k3_frame_num = 8
 gpu_devices = [2]
 jobs_per_gpu = 4
 etomo_cpu_cores = 8
+# ==================================================
+# ============ USER-EDITABLE SETTINGS ==============
+# ==================================================
+# --- General Settings ---
+dataset_name = "251113_HSC_rest"
+raw_directory = "/data/Microscopy/Titan/Siyu" 
+# Path to where you would like to save your raw data
+# Titan2 data will be moved there and there might be no copy of your raw data in the original place
+frame_folder = "frames"
+mdoc_folder = "mdocs"
+gain_ref = "wrong.gain"
+tomo_match_string = "20251113_L" 
 
+# --- Key Acquisition Parameters ---
+angpix = 0.935
+dose = 5.172
+tilt_axis_angle = 84.48
+thickness_pxl = 3000
+camera_type = "Falcon4" # Switch between "K3" or "Falcon4"
+
+# --- Falcon4 Specific Settings ---
+# The source directory containing raw .eer and .eer.mdoc files
+falcon4_source_dir = "/data/Microscopy/titan2/Villa_20251113_100000_SYC"
+falcon4_eer_ngroups = 8
+
+# --- K3 Specific Settings ---
+k3_frame_num = 8
 # ==================================================
 # ========= DERIVED PARAMETERS (DO NOT EDIT) =========
 # ==================================================

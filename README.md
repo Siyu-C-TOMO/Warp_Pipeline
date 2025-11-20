@@ -270,7 +270,7 @@ python /path/to/Warp_Pipeline/run_appendix.py --stage <module_name>
 #### `cryolo`
 **Goal**: Perform automated particle picking using a pre-trained CryoLo model.
 *   **Key Steps**:
-    1.  Requires a `cryolo` directory prepared with a trained model.
+    1.  If not exist, prepare a `cryolo` directory with a star-handler command.
     2.  Runs CryoLo prediction on the tomograms listed in `ribo_list_final.txt`.
     3.  Converts the output coordinates (`.coords`) to `.star` files.
     4.  Filters the picked particles based on a Z-coordinate range specified in `ribo_list_final.txt` to exclude particles near the top or bottom of the tomogram.

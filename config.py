@@ -2,26 +2,26 @@
 # ============ USER-EDITABLE SETTINGS ==============
 # ==================================================
 # --- General Settings ---
-dataset_name = "251028_HSC_2d"
-raw_directory = "/data/Microscopy/Titan/Siyu" 
+dataset_name = "20240328_A549TNT_EK"
+raw_directory = "/data/Microscopy/Titan" 
 # Path to where you would like to save your raw data
 # Titan2 data will be moved there and there might be no copy of your raw data in the original place
 frame_folder = "frames"
-mdoc_folder = "mdocs"
-gain_ref = "wrong.gain"
-tomo_match_string = "20251028_L" 
+mdoc_folder = "pacetomo"
+gain_ref = "CountRef_pol1_g1_ts_001_001_000_5.0.mrc"
+tomo_match_string = "pol" 
 
 # --- Key Acquisition Parameters ---
-angpix = 0.935
-dose = 5.172
-tilt_axis_angle = 84.48
+angpix = 1.635
+dose = 5
+tilt_axis_angle = -94.6
 thickness_pxl = 3000
-camera_type = "Falcon4" # Switch between "K3" or "Falcon4"
+camera_type = "K3" # Switch between "K3" or "Falcon4"
 
 # --- Falcon4 Specific Settings ---
 # The source directory containing raw .eer and .eer.mdoc files
-falcon4_source_dir = "/data/Microscopy/titan2/Villa_20251028_100000_SYC"
-falcon4_eer_ngroups = 8
+falcon4_source_dir = "/data/Microscopy/titan2/Villa_20251001_100000_SYC"
+falcon4_eer_ngroups = 16
 
 # --- K3 Specific Settings ---
 k3_frame_num = 8
@@ -89,6 +89,11 @@ isonet_params = {
 
 # --- Cryolo Settings ---
 cryolo_params = {
+    "prep": {
+        "enable": True,
+        "star_file": "/data/workspace/Siyu/Titan1_Processing/251028_HSC_2d/relion32_7p48/Refine3D/ms1c236_mr1/run_data.star",
+        "bin_factor": 1
+    },
     "threshold": 0.25,
     "min_connections": 5,
     "batch_size": len(gpu_devices)*2
@@ -102,5 +107,5 @@ template_matching_params = {
     "template_diameter": 350,
     "peak_distance": 175,
     "symmetry": "C1",
-    "input_data": "NONE",  # Path to the matching.txt file; if "NONE", will run with full tomoset
+    "input_data": "matching.txt",  # Path to the matching.txt file; if "NONE", will run with full tomoset
 }

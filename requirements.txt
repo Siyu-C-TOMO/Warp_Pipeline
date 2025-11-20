@@ -3,3 +3,9 @@
 
 pandas
 numpy
+starfile>=0.4.0
+click>=8.0.0
+slack-bolt>=1.18.0
+scipy>=1.7.0
+matplotlib>=3.4.0
+requests>=2.25.0

@@ -52,7 +52,7 @@ def run_preprocess(dataset_dir: Path, logs_dir: Path, params: dict):
         if not gain_ref_link:
             logging.critical("Gain reference preparation failed. Please check logs. Aborting preprocessing.")
             return
-        params.extra_create_args.append("--gain_path", str(gain_ref_link.resolve()))
+        params["extra_create_args"].extend(["--gain_path", str(gain_ref_link.resolve())])
 
     logging.info("Creating frame series settings...")
     cmd_frame_settings = build_frame_settings_command(frame_source_path, params)
@@ -267,7 +267,7 @@ def run_postprocess(dataset_dir: Path, logs_dir: Path):
             deconv_log_dir / "deconvolution.log",
             cwd=tomo_dir,
             shell=True,
-            verbose=False  # Make this call non-verbose
+            verbose=False
         )
 
         for f in tomo_dir.glob("*~"):
