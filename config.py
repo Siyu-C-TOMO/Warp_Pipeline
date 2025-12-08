@@ -2,21 +2,21 @@
 # ============ USER-EDITABLE SETTINGS ==============
 # ==================================================
 # --- General Settings ---
-dataset_name = "20240328_A549TNT_EK"
-raw_directory = "/data/Microscopy/Titan" 
+dataset_name = "251113_HSC_rest"
+raw_directory = "/data/Microscopy/Titan/Siyu" 
 # Path to where you would like to save your raw data
 # Titan2 data will be moved there and there might be no copy of your raw data in the original place
 frame_folder = "frames"
-mdoc_folder = "pacetomo"
-gain_ref = "CountRef_pol1_g1_ts_001_001_000_5.0.mrc"
-tomo_match_string = "pol" 
+mdoc_folder = "mdocs"
+gain_ref = "wrong.gain"
+tomo_match_string = "20251113_L" 
 
 # --- Key Acquisition Parameters ---
-angpix = 1.635
-dose = 5
-tilt_axis_angle = -94.6
+angpix = 0.935
+dose = 5.172
+tilt_axis_angle = 84.48
 thickness_pxl = 3000
-camera_type = "K3" # Switch between "K3" or "Falcon4"
+camera_type = "Falcon4" # Switch between "K3" or "Falcon4"
 
 # --- Falcon4 Specific Settings ---
 # The source directory containing raw .eer and .eer.mdoc files
@@ -91,7 +91,7 @@ isonet_params = {
 cryolo_params = {
     "prep": {
         "enable": True,
-        "star_file": "/data/workspace/Siyu/Titan1_Processing/251028_HSC_2d/relion32_7p48/Refine3D/ms1c236_mr1/run_data.star",
+        "star_file": "/data/workspace/Siyu/Titan1_Processing/251113_HSC_rest/relion32_7p48/Refine3D/ms1c246_mr1/run_data.star",
         "bin_factor": 1
     },
     "threshold": 0.25,
@@ -108,4 +108,33 @@ template_matching_params = {
     "peak_distance": 175,
     "symmetry": "C1",
     "input_data": "matching.txt",  # Path to the matching.txt file; if "NONE", will run with full tomoset
+}
+
+# --- particle export Settings ---
+subtomo_params = {
+    "3d": True,
+    "--input_directory": "warp_tiltseries/matching/filtered/",
+    "--input_pattern": "*.star",
+    # "--input_star": "warp_tiltseries/matching/filtered/combined.star",
+    "--coords_angpix": angpix * FINAL_NEWSTACK_BIN,
+    "--output_star": "relion32/wrap.star",
+    "--output_angpix": angpix * FINAL_NEWSTACK_BIN,
+    "--output_processing": "relion32",
+    "--box": 72,
+    "--diameter": 350
+}
+
+# --- m refine Settings ---
+m_refine_params = {
+    "directory": "m_bin8_to3p74",
+    "population_name" : "m_bin8_4classes",
+    "relion_folder" : "relion32_linux",
+    "source_name" : "m_full",
+    "species": [
+        {"name":"ribosome_60S", "relion":"60S_c1_mr1/","mask":"60S_c1_4_3_6/"},
+        {"name":"ribosome_eEF2","relion":"eEF2_c25_mr1/","mask":"eEF2_c2_3_3_6/"},
+        {"name": "ribosome_AT", "relion": "AT_c3_mr1", "mask": "AT_c3_3_3_6"},
+        {"name": "ribosome_AA", "relion": "AA_c4_mr1", "mask": "AA_c4_3_3_6"},
+        {"name": "ribosome_P", "relion": "P_c6_mr1", "mask": "P_c6_3_3_6"} 
+    ],
 }

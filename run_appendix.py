@@ -9,11 +9,13 @@ from pathlib import Path
 import config as cfg
 from pipeline_utils import run_command, filter_star_file
 from command_builder import (
+    build_m_source_command,
     build_reconstruction_command,
     build_isonet_commands,
     build_cryolo_commands,
-    build_particle_export_command,
     build_template_match_command,
+    build_subtomo_extraction_command,
+    build_m_population_command,
 )
 
 try:
@@ -168,13 +170,25 @@ def cryolo(log_file_path: Path):
             except ValueError:
                 logging.error(f"Invalid range for tomogram {tomo}: {start_str}-{end_str}")
 
-    logging.info("--- Starting WarpTools ts_export_particles ---")
-    env = os.environ.copy()
-    env['WARP_FORCE_MRC_FLOAT32'] = '1'
+    logging.info("--- Handing over to subtomo_extraction ---")
     
-    cmd_export = build_particle_export_command(cryolo_dir, output_dir, cfg.jobs_per_gpu, cfg.gpu_devices)
-    run_command(cmd_export, cmd_log_dir / "export.log", env=env, module_load="warp/2.0.0dev36")
-    logging.info("--- WarpTools ts_export_particles completed. ---")
+    subtomo_params = {
+        "--input_directory": str(cryolo_dir / output_dir / "STAR"),
+        "--input_pattern": "*.star",
+        "--coords_angpix": str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
+        "--output_star": f"relion32_cryolo_expand/cryolo_{output_dir}.star",
+        "--output_angpix": str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
+        "--output_processing": "relion32_cryolo_expand/",
+        "--box": "72",
+        "--diameter": "350",
+        "3d": True
+    }
+
+    original_params = cfg.subtomo_params
+    cfg.subtomo_params = subtomo_params 
+    subtomo_extraction(log_file_path)
+    cfg.subtomo_params = original_params
+    logging.info("--- Subtomo extraction after CryoLo completed. ---")
 
 def template_match_3D(log_file_path: Path):
     """Run the 3D template matching stage of the pipeline."""
@@ -187,7 +201,6 @@ def template_match_3D(log_file_path: Path):
     if not list_file.exists():
         logging.warning(f"no list file available: {list_file.resolve()}. Running with full tomoset.")
 
-    logging.info("Running WarpTools ts_template_match...")
     env = os.environ.copy()
     cmd_template_match = build_template_match_command(
         cfg.template_matching_params, cfg.jobs_per_gpu, cfg.gpu_devices
@@ -197,13 +210,41 @@ def template_match_3D(log_file_path: Path):
     run_command(cmd_template_match, log_file_path, env=env, module_load="warp/2.0.0dev36")
     logging.info("--- WarpTools ts_template_match completed. ---")
 
+def subtomo_extraction(log_file_path: Path):
+    """Run the particle extraction stage of the pipeline."""
+    env = os.environ.copy()
+    if cfg.subtomo_params.get("3d", True):
+        env['WARP_FORCE_MRC_FLOAT32'] = '1'
+    cmd_export = build_subtomo_extraction_command(
+        cfg.subtomo_params, cfg.jobs_per_gpu, cfg.gpu_devices
+    )
+
+    logging.info("--- Starting WarpTools ts_export_particles ---")
+    run_command(cmd_export, log_file_path, env=env, module_load="warp/2.0.0dev36")
+    logging.info("--- WarpTools ts_export_particles completed. ---")
+
+
+def m_refinement(log_file_path: Path):
+    """Run the M refinement stage of the pipeline."""
+    env = os.environ.copy()
+    cmd_population = build_m_population_command(cfg.m_refine_params)
+    logging.info("--- Starting MTools create_population ---")
+    run_command(cmd_population, log_file_path, env=env, module_load="warp/2.0.0dev36")
+    logging.info("--- MTools create_population completed. ---")
+
+    cmd_source = build_m_source_command(cfg.m_refine_params)
+    logging.info("--- Starting MTools add_source or create_source ---")
+    run_command(cmd_source, log_file_path, env=env, module_load="warp/2.0.0dev36")
+    logging.info("--- MTools add_source or create_source completed. ---")
+    
+
 def main():
     """Main function to initiate the appendix processing jobs."""
     parser = argparse.ArgumentParser(description="A stepwise handler for cryo-ET data processing.")
     parser.add_argument(
         '--stage',
         type=str,
-        choices=['isonet', 'cryolo', 'reconstruction', '3DTM'],
+        choices=['isonet', 'cryolo', 'reconstruction', '3DTM', 'subtomo', 'm_refinement'],
         help="Which stage of the pipeline to run."
     )
     args = parser.parse_args()
@@ -235,6 +276,8 @@ def main():
             'isonet': isonet,
             'cryolo': cryolo,
             '3DTM': template_match_3D,
+            'subtomo': subtomo_extraction,
+            'm_refinement': m_refinement
         }
         if args.stage in stage_map:
             stage_map[args.stage](log_file_path)

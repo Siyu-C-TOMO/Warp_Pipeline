@@ -48,28 +48,6 @@ def build_cryolo_commands(cryolo_params, gpu_devices):
     ]
     return commands, output_dir
 
-def build_particle_export_command(cryolo_dir, output_dir, jobs_per_gpu, gpu_devices):
-    """Builds the command for exporting particles with WarpTools."""
-    angpix = cfg.angpix * cfg.FINAL_NEWSTACK_BIN
-    cmd = [
-        "WarpTools", "ts_export_particles",
-        "--settings", "warp_tiltseries.settings",
-        "--input_directory", f"{cryolo_dir}/{output_dir}/STAR/",
-        "--input_processing", "warp_tiltseries",
-        "--input_pattern", "*.star",
-        "--coords_angpix", str(angpix),
-        "--output_star", f"relion32_cryolo_expand/cryolo_{output_dir}.star",
-        "--output_angpix", str(angpix),
-        "--output_processing", "relion32_cryolo_expand/",
-        "--box", "72",
-        "--diameter", "350",
-        "--relative_output_paths",
-        "--perdevice", str(jobs_per_gpu),
-        "--3d"
-    ]
-    cmd.extend(["--device_list"] + [str(d) for d in gpu_devices])
-    return cmd
-
 def build_template_match_command(params, jobs_per_gpu, gpu_devices):
     """Builds the command for the 3D template matching stage."""
     cmd = [
@@ -90,6 +68,53 @@ def build_template_match_command(params, jobs_per_gpu, gpu_devices):
         cmd.extend(["--input_data", str(list_file)])
     
     return cmd
+
+def build_subtomo_extraction_command(params, jobs_per_gpu, gpu_devices):
+    """Builds the command for the subtomogram extraction stage."""
+    cmd = [
+        "WarpTools", "ts_export_particles",
+        "--settings", "warp_tiltseries.settings",
+        "--input_processing", "warp_tiltseries",
+        "--coords_angpix", str(params["--coords_angpix"]),
+        "--output_star", params["--output_star"],
+        "--output_angpix", str(params["--output_angpix"]),
+        "--output_processing", params["--output_processing"],
+        "--relative_output_paths",
+        "--box", str(params["--box"]),
+        "--diameter", str(params["--diameter"]),
+        "--perdevice", str(jobs_per_gpu),
+    ]
+
+    if "--input_star" in params:
+        cmd.extend(["--input_star", params["--input_star"]])
+    elif "--input_directory" in params:
+        cmd.extend(["--input_directory", params["--input_directory"]])
+        cmd.extend(["--input_pattern", params.get("--input_pattern", "*.star")])
+    else:
+        raise ValueError("Missing input source: --input_star or --input_directory must be provided in params.")
+
+    cmd.extend(["--device_list"] + [str(d) for d in gpu_devices])
+    cmd.append("--3d") if params.get("3d", True) else cmd.append("--2d")
+    return cmd
+
+def build_m_population_command(m_refine_params):
+    """Builds the command for the m population stage."""
+    return ["MTools", "create_population",
+         "--directory", m_refine_params["directory"],
+         "--name", f"{m_refine_params['population_name']}.population"]
+
+def build_m_source_command(m_refine_params):
+    """Builds the command for the m source stage."""
+    if "warp_tiltseries"/m_refine_params["source_name"] + ".source".exists():
+        return ["MTools", "add_source",
+             "--population", f"{m_refine_params['directory']}/{m_refine_params['population_name']}.population",
+             "--source_name", m_refine_params["source_name"]]
+    else:
+        return ["MTools", "create_source",
+                "--name", m_refine_params["source_name"],
+                "--population", f"{m_refine_params['directory']}/{m_refine_params['population_name']}.population",
+                "--process_settings", "warp_tiltseries.settings"
+        ]
 
 # --- Commands for run_pipeline.py ---
 
@@ -179,11 +204,16 @@ def build_ts_stack_command():
 
 def build_import_align_command():
     """Builds the command to import improved alignments."""
+    camera_map = {
+        "Falcon4": cfg.angpix * cfg.FINAL_NEWSTACK_BIN,
+        "K3": cfg.angpix
+    }
+    align_angpix = camera_map.get(cfg.camera_type)
     return [
         "WarpTools", "ts_import_alignments",
         "--settings", "warp_tiltseries.settings",
         "--alignments", "warp_tiltseries/tiltstack/",
-        "--alignment_angpix", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
+        "--alignment_angpix", str(align_angpix),
     ]
 
 def build_hand_check_command():
