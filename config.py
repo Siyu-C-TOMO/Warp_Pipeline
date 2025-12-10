@@ -2,21 +2,21 @@
 # ============ USER-EDITABLE SETTINGS ==============
 # ==================================================
 # --- General Settings ---
-dataset_name = "251113_HSC_rest"
-raw_directory = "/data/Microscopy/Titan/Siyu" 
+dataset_name = "20240328_A549TNT_EK"
+raw_directory = "/data/Microscopy/Titan" 
 # Path to where you would like to save your raw data
 # Titan2 data will be moved there and there might be no copy of your raw data in the original place
 frame_folder = "frames"
-mdoc_folder = "mdocs"
-gain_ref = "wrong.gain"
-tomo_match_string = "20251113_L" 
+mdoc_folder = "pacetomo"
+gain_ref = "CountRef_pol1_g1_ts_001_001_000_5.0.mrc"
+tomo_match_string = "pol" 
 
 # --- Key Acquisition Parameters ---
-angpix = 0.935
-dose = 5.172
-tilt_axis_angle = 84.48
+angpix = 1.729
+dose = 5
+tilt_axis_angle = -94.6
 thickness_pxl = 3000
-camera_type = "Falcon4" # Switch between "K3" or "Falcon4"
+camera_type = "K3" # Switch between "K3" or "Falcon4"
 
 # --- Falcon4 Specific Settings ---
 # The source directory containing raw .eer and .eer.mdoc files
@@ -33,8 +33,11 @@ k3_frame_num = 8
 # --- Computing Resources ---
 import os
 gpu_devices = [int(x) for x in os.environ.get('CUDA_VISIBLE_DEVICES', '0').split(',')]
-jobs_per_gpu = 1
+jobs_per_gpu = 2
 etomo_cpu_cores = 8
+
+# --- Base Path ---
+base_dir = "/data/workspace/Siyu/Titan1_Processing"
 
 # --- Warp Pipeline Parameters ---
 pipeline_params = {}
@@ -91,7 +94,7 @@ isonet_params = {
 cryolo_params = {
     "prep": {
         "enable": True,
-        "star_file": "/data/workspace/Siyu/Titan1_Processing/251113_HSC_rest/relion32_7p48/Refine3D/ms1c246_mr1/run_data.star",
+        "star_file": f"{base_dir}/251113_HSC_rest/relion32_7p48/Refine3D/ms1c246_mr1/run_data.star",
         "bin_factor": 1
     },
     "threshold": 0.25,
@@ -101,9 +104,10 @@ cryolo_params = {
 
 # --- 3D template matching Settings ---
 template_matching_params = {
-    "tomo_angpix": angpix * FINAL_NEWSTACK_BIN,
+    # "tomo_angpix": angpix * FINAL_NEWSTACK_BIN,
+    "tomo_angpix": 10,
     "subdivisions": 3,
-    "template_path": "/data/workspace/Siyu/Titan1_Processing/test/20250820_HSC_4hr_CorrectHand/relion32_linux/Refine3D/fc_clean_mr1/run_class001.mrc",
+    "template_path": f"{base_dir}/test/20250820_HSC_4hr_CorrectHand/relion32_linux/Refine3D/fc_clean_mr1/run_class001.mrc",
     "template_diameter": 350,
     "peak_distance": 175,
     "symmetry": "C1",
@@ -113,28 +117,31 @@ template_matching_params = {
 # --- particle export Settings ---
 subtomo_params = {
     "3d": True,
-    "--input_directory": "warp_tiltseries/matching/filtered/",
-    "--input_pattern": "*.star",
+    "--input_directory": "../dynamo/flip_combine/",
+    "--input_pattern": "pf13_d3_relion.star",
     # "--input_star": "warp_tiltseries/matching/filtered/combined.star",
-    "--coords_angpix": angpix * FINAL_NEWSTACK_BIN,
-    "--output_star": "relion32/wrap.star",
-    "--output_angpix": angpix * FINAL_NEWSTACK_BIN,
-    "--output_processing": "relion32",
-    "--box": 72,
-    "--diameter": 350
+    "--coords_angpix": 10,
+    "--output_star": "relion32/pf13_d3.star",
+    "--output_angpix": angpix * FINAL_NEWSTACK_BIN /2,
+    "--output_processing": "relion32_bin4_pf13",
+    "--box": 56,
+    "--diameter": 250
 }
 
 # --- m refine Settings ---
 m_refine_params = {
     "directory": "m_bin8_to3p74",
     "population_name" : "m_bin8_4classes",
-    "relion_folder" : "relion32_linux",
-    "source_name" : "m_full",
+    "relion_folder" : f"{base_dir}/251113_HSC_rest/relion32_linux",
+    "source_names" : [
+        {"dataset": "251028_HSC_2d", "name":"m_full_251028"},
+        {"dataset": "251113_HSC_rest", "name":"m_full_251113"},
+    ],
     "species": [
-        {"name":"ribosome_60S", "relion":"60S_c1_mr1/","mask":"60S_c1_4_3_6/"},
-        {"name":"ribosome_eEF2","relion":"eEF2_c25_mr1/","mask":"eEF2_c2_3_3_6/"},
-        {"name": "ribosome_AT", "relion": "AT_c3_mr1", "mask": "AT_c3_3_3_6"},
-        {"name": "ribosome_AA", "relion": "AA_c4_mr1", "mask": "AA_c4_3_3_6"},
-        {"name": "ribosome_P", "relion": "P_c6_mr1", "mask": "P_c6_3_3_6"} 
+        {"name":"ribosome", "job":"60S_c1_mr1","mask":"60S_c1_4_3_6/"},
+        # {"name":"ribosome_eEF2","job":"eEF2_c25_mr1/","mask":"eEF2_c2_3_3_6/"},
+        # {"name": "ribosome_AT", "job": "AT_c3_mr1", "mask": "AT_c3_3_3_6"},
+        # {"name": "ribosome_AA", "job": "AA_c4_mr1", "mask": "AA_c4_3_3_6"},
+        # {"name": "ribosome_P", "job": "P_c6_mr1", "mask": "P_c6_3_3_6"} 
     ],
 }

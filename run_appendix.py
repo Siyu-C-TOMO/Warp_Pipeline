@@ -9,13 +9,13 @@ from pathlib import Path
 import config as cfg
 from pipeline_utils import run_command, filter_star_file
 from command_builder import (
-    build_m_source_command,
+    build_m_refine_command,
+    build_m_population_command,
     build_reconstruction_command,
     build_isonet_commands,
     build_cryolo_commands,
     build_template_match_command,
     build_subtomo_extraction_command,
-    build_m_population_command,
 )
 
 try:
@@ -226,16 +226,25 @@ def subtomo_extraction(log_file_path: Path):
 
 def m_refinement(log_file_path: Path):
     """Run the M refinement stage of the pipeline."""
+    m_dir = Path(cfg.m_refine_params['directory'])
+    cmd_log_dir = m_dir / "logs"
     env = os.environ.copy()
-    cmd_population = build_m_population_command(cfg.m_refine_params)
-    logging.info("--- Starting MTools create_population ---")
-    run_command(cmd_population, log_file_path, env=env, module_load="warp/2.0.0dev36")
-    logging.info("--- MTools create_population completed. ---")
 
-    cmd_source = build_m_source_command(cfg.m_refine_params)
-    logging.info("--- Starting MTools add_source or create_source ---")
-    run_command(cmd_source, log_file_path, env=env, module_load="warp/2.0.0dev36")
-    logging.info("--- MTools add_source or create_source completed. ---")
+    logging.info("--- Preparing population ---")
+    prep_cmds = build_m_population_command(cfg.m_refine_params)
+    total_steps = len(prep_cmds)
+    for i, cmd in enumerate(prep_cmds, 1):
+        logging.info(f"--- Starting M population prep step [{i}/{total_steps}]: {cmd.split()[0]} ---")
+        run_command(cmd, cmd_log_dir / f"prep_step_{i}.log", cwd=m_dir, env=env, module_load='warp/2.0.0dev36')
+
+    refine_cmds = build_m_refine_command(cfg.m_refine_params)
+    logging.info("--- Starting M refinement stage ---")
+    total_steps = len(refine_cmds)
+    for i, cmd in enumerate(refine_cmds, 1):
+        logging.info(f"--- Starting M_refine step [{i}/{total_steps}]: {cmd.split()[0]} ---")
+        run_command(cmd, cmd_log_dir / f"step_{i}.log", cwd=m_dir, env=env, module_load='warp/2.0.0dev36')
+    
+    logging.info("--- All M_refine steps completed successfully. ---")
     
 
 def main():

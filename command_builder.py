@@ -98,24 +98,67 @@ def build_subtomo_extraction_command(params, jobs_per_gpu, gpu_devices):
     return cmd
 
 def build_m_population_command(m_refine_params):
-    """Builds the command for the m population stage."""
-    return ["MTools", "create_population",
+    """Builds the command for the m population, sources and species."""
+    pop_cmd = [
+        "MTools", "create_population",
          "--directory", m_refine_params["directory"],
-         "--name", f"{m_refine_params['population_name']}.population"]
+         "--name", f"{m_refine_params['population_name']}.population"
+    ]
 
-def build_m_source_command(m_refine_params):
-    """Builds the command for the m source stage."""
-    if "warp_tiltseries"/m_refine_params["source_name"] + ".source".exists():
-        return ["MTools", "add_source",
-             "--population", f"{m_refine_params['directory']}/{m_refine_params['population_name']}.population",
-             "--source_name", m_refine_params["source_name"]]
-    else:
-        return ["MTools", "create_source",
-                "--name", m_refine_params["source_name"],
+    source_cmds = []
+    for source in m_refine_params["source_names"]:
+        source_path = Path(cfg.base_dir) / source["dataset"] / "warp_tiltseries" / f"{source['name']}.source"
+        if source_path.exists():
+            source_cmds.append(["MTools", "add_source",
                 "--population", f"{m_refine_params['directory']}/{m_refine_params['population_name']}.population",
-                "--process_settings", "warp_tiltseries.settings"
-        ]
+                "--source_name", source_path
+                ])
+        else:
+            source_cmds.append([
+                "MTools", "create_source",
+                "--name", source["name"],
+                "--population", f"{m_refine_params['directory']}/{m_refine_params['population_name']}.population",
+                "--process_settings", Path(cfg.base_dir) / source["dataset"] / "warp_tiltseries.settings"
+            ])
+    
+    species_cmds = []
+    for species in m_refine_params["species"]:
+        species_cmds.append([
+            "MTools", "add_species",
+            "--population", f"{m_refine_params['directory']}/{m_refine_params['population_name']}.population",
+            "--name", species["name"],
+            "--diameter", "350",
+            "--sym", "C1",
+            "--temporal_samples", "1",
+            "--half1", f"{m_refine_params['relion_folder']}/Refine3D/{species['job']}/run_half1_class001_unfil.mrc",
+            "--half2", f"{m_refine_params['relion_folder']}/Refine3D/{species['job']}/run_half2_class001_unfil.mrc",
+            "--mask", f"{m_refine_params['relion_folder']}/MaskCreate/{species['mask']}/mask.mrc",
+            "--particles_relion", f"{m_refine_params['relion_folder']}/Refine3D/{species['job']}/run_data.star",
+            "--angpix_coords", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
+            "--angpix_resample", str(cfg.angpix),
+            "--lowpass", "10",
+        ])
+    
+    return [pop_cmd, source_cmds, species_cmds]
 
+
+def build_m_refine_command(m_refine_params):
+    """Builds the command for the m refine stage."""
+    population = f"--population {m_refine_params['directory']}/{m_refine_params['population_name']}.population"
+    device = "--perdevice_refine 4 --perdevice_preprocess 1 --perdevice_postprocess 1"
+    cmds = [
+        f"MCore {population} --iter 0 {device}",
+        f"MCore {population} --iter 5 --refine_imagewarp 4x4 --refine_particles --ctf_defocus --ctf_defocusexhaustive {device}",
+        f"MCore {population} --iter 5 --refine_imagewarp 4x4 --refine_particles --ctf_defocus {device}",
+        f"EstimateWeights {population} --source m_full* --resolve_items",
+        f"MCore {population} --iter 5 --refine_particles {device}",
+        f"EstimateWeights {population} --source m_full* --resolve_frames",
+        f"MCore {population} --iter 5 --refine_particles {device}",
+        f"MCore {population} --iter 5 --refine_imagewarp 4x4 --refine_particles --ctf_defocus --refine_mag --ctf_cs --ctf_zernike3 --refine_stageangles {device}",
+        f"MTools resample_trajectories {population} --species {m_refine_params['directory']}/species/*/*.species --samples 3",
+        f"MCore {population} --iter 5 --refine_imagewarp 4x4 --refine_particles --ctf_defocus --refine_mag --ctf_cs --ctf_zernike3 --refine_stageangles {device}"
+    ]
+    return cmds
 # --- Commands for run_pipeline.py ---
 
 def build_frame_settings_command(frame_source_path, params):
