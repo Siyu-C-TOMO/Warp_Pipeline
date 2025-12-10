@@ -124,7 +124,7 @@ def build_m_population_command(m_refine_params):
     species_cmds = []
     for species in m_refine_params["species"]:
         species_cmds.append([
-            "MTools", "add_species",
+            "MTools", "create_species",
             "--population", f"{m_refine_params['directory']}/{m_refine_params['population_name']}.population",
             "--name", species["name"],
             "--diameter", "350",
@@ -139,8 +139,7 @@ def build_m_population_command(m_refine_params):
             "--lowpass", "10",
         ])
     
-    return [pop_cmd, source_cmds, species_cmds]
-
+    return [pop_cmd] + source_cmds + species_cmds
 
 def build_m_refine_command(m_refine_params):
     """Builds the command for the m refine stage."""
