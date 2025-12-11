@@ -226,22 +226,24 @@ def subtomo_extraction(log_file_path: Path):
 
 def m_refinement(log_file_path: Path):
     """Run the M refinement stage of the pipeline."""
-    m_dir = Path(cfg.m_refine_params['directory'])
-    cmd_log_dir = m_dir / "logs"
+    m_dir = Path("ribo_m")
+    cmd_log_dir = m_dir / cfg.m_refine_params['directory'] / "logs"
     env = os.environ.copy()
 
     logging.info("--- Preparing population ---")
     prep_cmds = build_m_population_command(cfg.m_refine_params)
     total_steps = len(prep_cmds)
     for i, cmd in enumerate(prep_cmds, 1):
-        logging.info(f"--- Starting M population prep step [{i}/{total_steps}]: {cmd.split()[0]} ---")
+        cmd_name = cmd[0] if isinstance(cmd, list) else cmd.split()[0]
+        logging.info(f"--- Starting M population prep step [{i}/{total_steps}]: {cmd_name} ---")
         run_command(cmd, cmd_log_dir / f"prep_step_{i}.log", cwd=m_dir, env=env, module_load='warp/2.0.0dev36')
 
     refine_cmds = build_m_refine_command(cfg.m_refine_params)
     logging.info("--- Starting M refinement stage ---")
     total_steps = len(refine_cmds)
     for i, cmd in enumerate(refine_cmds, 1):
-        logging.info(f"--- Starting M_refine step [{i}/{total_steps}]: {cmd.split()[0]} ---")
+        cmd_name = cmd[0] if isinstance(cmd, list) else cmd.split()[0]
+        logging.info(f"--- Starting M_refine step [{i}/{total_steps}]: {cmd_name} ---")
         run_command(cmd, cmd_log_dir / f"step_{i}.log", cwd=m_dir, env=env, module_load='warp/2.0.0dev36')
     
     logging.info("--- All M_refine steps completed successfully. ---")
@@ -253,7 +255,7 @@ def main():
     parser.add_argument(
         '--stage',
         type=str,
-        choices=['isonet', 'cryolo', 'reconstruction', '3DTM', 'subtomo', 'm_refinement'],
+        choices=['isonet', 'cryolo', 'reconstruction', '3DTM', 'subtomo', 'm_refine'],
         help="Which stage of the pipeline to run."
     )
     args = parser.parse_args()
@@ -286,7 +288,7 @@ def main():
             'cryolo': cryolo,
             '3DTM': template_match_3D,
             'subtomo': subtomo_extraction,
-            'm_refinement': m_refinement
+            'm_refine': m_refinement
         }
         if args.stage in stage_map:
             stage_map[args.stage](log_file_path)

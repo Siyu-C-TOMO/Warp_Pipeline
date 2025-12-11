@@ -102,7 +102,7 @@ def build_m_population_command(m_refine_params):
     pop_cmd = [
         "MTools", "create_population",
          "--directory", m_refine_params["directory"],
-         "--name", f"{m_refine_params['population_name']}.population"
+         "--name", m_refine_params['population_name']
     ]
 
     source_cmds = []
@@ -111,7 +111,7 @@ def build_m_population_command(m_refine_params):
         if source_path.exists():
             source_cmds.append(["MTools", "add_source",
                 "--population", f"{m_refine_params['directory']}/{m_refine_params['population_name']}.population",
-                "--source_name", source_path
+                "--source", source_path
                 ])
         else:
             source_cmds.append([
@@ -135,7 +135,7 @@ def build_m_population_command(m_refine_params):
             "--mask", f"{m_refine_params['relion_folder']}/MaskCreate/{species['mask']}/mask.mrc",
             "--particles_relion", f"{m_refine_params['relion_folder']}/Refine3D/{species['job']}/run_data.star",
             "--angpix_coords", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
-            "--angpix_resample", str(cfg.angpix),
+            "--angpix_resample", str(cfg.angpix*2),
             "--lowpass", "10",
         ])
     
