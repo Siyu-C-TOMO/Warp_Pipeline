@@ -34,7 +34,7 @@ def reconstruction(log_file_path: Path):
 
     logging.info("Running WarpTools ts_reconstruct...")
     env = os.environ.copy()
-    
+    # env['WARP_FORCE_MRC_FLOAT32'] = '1'
     cmd_reconstruct = build_reconstruction_command(cfg.jobs_per_gpu, cfg.gpu_devices)
     run_command(cmd_reconstruct, log_file_path, env=env)
 
@@ -255,10 +255,15 @@ def main():
     parser.add_argument(
         '--stage',
         type=str,
-        choices=['isonet', 'cryolo', 'reconstruction', '3DTM', 'subtomo', 'm_refine'],
+        choices=['isonet', 'cryolo', 'reconstruct', '3DTM', 'subtomo', 'm_refine'],
         help="Which stage of the pipeline to run."
     )
+    parser.add_argument('--input_list', type=str, default=None, help="Override input list file for 3DTM")
     args = parser.parse_args()
+
+    if args.stage == '3DTM' and args.input_list:
+            logging.info(f"Overriding input data list with: {args.input_list}")
+            cfg.template_matching_params['input_data'] = args.input_list
 
     if cfg.dataset_name != Path.cwd().name:
         logging.warning(
@@ -283,7 +288,7 @@ def main():
         logging.info(f"Main log file for this run is: {log_file_path.resolve()}")
 
         stage_map = {
-            'reconstruction': reconstruction,
+            'reconstruct': reconstruction,
             'isonet': isonet,
             'cryolo': cryolo,
             '3DTM': template_match_3D,

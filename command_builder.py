@@ -67,6 +67,9 @@ def build_template_match_command(params, jobs_per_gpu, gpu_devices):
     if list_file.exists():
         cmd.extend(["--input_data", str(list_file)])
     
+    if params.get('reuse_results', True):
+        cmd.append("--reuse_results")
+    
     return cmd
 
 def build_subtomo_extraction_command(params, jobs_per_gpu, gpu_devices):
@@ -118,7 +121,7 @@ def build_m_population_command(m_refine_params):
                 "MTools", "create_source",
                 "--name", source["name"],
                 "--population", f"{m_refine_params['directory']}/{m_refine_params['population_name']}.population",
-                "--process_settings", Path(cfg.base_dir) / source["dataset"] / "warp_tiltseries.settings"
+                "--processing_settings", Path(cfg.base_dir) / source["dataset"] / "warp_tiltseries.settings"
             ])
     
     species_cmds = []
@@ -144,10 +147,11 @@ def build_m_population_command(m_refine_params):
 def build_m_refine_command(m_refine_params):
     """Builds the command for the m refine stage."""
     population = f"--population {m_refine_params['directory']}/{m_refine_params['population_name']}.population"
-    device = "--perdevice_refine 4 --perdevice_preprocess 1 --perdevice_postprocess 1"
+    device = "--perdevice_refine 3 --perdevice_preprocess 1 --perdevice_postprocess 1"
     cmds = [
         f"MCore {population} --iter 0 {device}",
         f"MCore {population} --iter 5 --refine_imagewarp 4x4 --refine_particles --ctf_defocus --ctf_defocusexhaustive {device}",
+        f"MCore {population} --iter 5 --refine_imagewarp 4x4 --refine_particles --ctf_defocus {device}",
         f"MCore {population} --iter 5 --refine_imagewarp 4x4 --refine_particles --ctf_defocus {device}",
         f"EstimateWeights {population} --source m_full* --resolve_items",
         f"MCore {population} --iter 5 --refine_particles {device}",

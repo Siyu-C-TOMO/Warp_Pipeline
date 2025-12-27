@@ -2,14 +2,14 @@
 # ============ USER-EDITABLE SETTINGS ==============
 # ==================================================
 # --- General Settings ---
-dataset_name = "251113_HSC_rest"
+dataset_name = "20250820_HSC_4hr"
 raw_directory = "/data/Microscopy/Titan/Siyu" 
 # Path to where you would like to save your raw data
 # Titan2 data will be moved there and there might be no copy of your raw data in the original place
 frame_folder = "frames"
 mdoc_folder = "mdocs"
 gain_ref = "wrong.gain"
-tomo_match_string = "20251113_L" 
+tomo_match_string = "L" 
 
 # --- Key Acquisition Parameters ---
 angpix = 0.935
@@ -20,7 +20,7 @@ camera_type = "Falcon4" # Switch between "K3" or "Falcon4"
 
 # --- Falcon4 Specific Settings ---
 # The source directory containing raw .eer and .eer.mdoc files
-falcon4_source_dir = "/data/Microscopy/titan2/Villa_20251113_100000_SYC"
+falcon4_source_dir = "/data/Microscopy/titan2/Villa_20251028_100000_SYC"
 falcon4_eer_ngroups = 8
 
 # --- K3 Specific Settings ---
@@ -33,7 +33,7 @@ k3_frame_num = 8
 # --- Computing Resources ---
 import os
 gpu_devices = [int(x) for x in os.environ.get('CUDA_VISIBLE_DEVICES', '0').split(',')]
-jobs_per_gpu = 2
+jobs_per_gpu = 1
 etomo_cpu_cores = 8
 
 # --- Base Path ---
@@ -111,34 +111,34 @@ template_matching_params = {
     "template_diameter": 350,
     "peak_distance": 175,
     "symmetry": "C1",
-    "input_data": "matching.txt",  # Path to the matching.txt file; if "NONE", will run with full tomoset
+    "input_data": "NONE",  # Path to the matching.txt file; if "NONE", will run with full tomoset
+    "reuse_results": True
 }
 
 # --- particle export Settings ---
 subtomo_params = {
     "3d": True,
-    "--input_directory": "../dynamo/flip_combine/",
-    "--input_pattern": "pf13_d3_relion.star",
-    # "--input_star": "warp_tiltseries/matching/filtered/combined.star",
+    "--input_directory": "warp_tiltseries/matching/filtered",
+    "--input_pattern": "*.star",
     "--coords_angpix": 10,
-    "--output_star": "relion32/pf13_d3.star",
-    "--output_angpix": angpix * FINAL_NEWSTACK_BIN /2,
-    "--output_processing": "relion32_bin4_pf13",
-    "--box": 56,
-    "--diameter": 250
+    "--output_star": "relion32_bin4/3DTM.star",
+    "--output_angpix": angpix * FINAL_NEWSTACK_BIN / 2,
+    "--output_processing": "relion32_bin4",
+    "--box": 72,
+    "--diameter": 350
 }
 
 # --- m refine Settings ---
 m_refine_params = {
-    "directory": "HSC_2set_7p48_to1p87_fromR3Refine",
-    "population_name" : "ribosome_2sets_7p48_to1p87_fromR3Refine",
+    "directory": "7p48_to1p87_clean_test",
+    "population_name" : "1set",
     "relion_folder" : f"{base_dir}/251028_HSC_2d/relion32_7p48",
     "source_names" : [
         {"dataset": "251028_HSC_2d", "name":"m_full_251028"},
-        {"dataset": "251113_HSC_rest", "name":"m_full_251113"},
+        # {"dataset": "251113_HSC_rest", "name":"m_full_251113"},
     ],
     "species": [
-        {"name":"ribosome", "job":"2set_mr1","mask":"ms1_it077_2_3_6"},
+        {"name":"ribosome", "job":"fc_mr1","mask":"ms1_it077_2_3_6/"},
         # {"name":"ribosome_eEF2","job":"eEF2_c25_mr1","mask":"eEF2_c2_3_3_6"},
         # {"name": "ribosome_AT", "job": "AT_c3_mr1", "mask": "AT_c3_3_3_6"},
         # {"name": "ribosome_AA", "job": "AA_c4_mr1", "mask": "AA_c4_3_3_6"},
