@@ -1,6 +1,11 @@
 # ==================================================
 # ============ USER-EDITABLE SETTINGS ==============
 # ==================================================
+
+# [SNAPSHOT CONFIG] 
+# This file is specific to this dataset directory.
+# Modifications here ONLY affect the current dataset run.
+
 # --- General Settings ---
 dataset_name = "20250820_HSC_4hr"
 raw_directory = "/data/Microscopy/Titan/Siyu" 
@@ -20,7 +25,7 @@ camera_type = "Falcon4" # Switch between "K3" or "Falcon4"
 
 # --- Falcon4 Specific Settings ---
 # The source directory containing raw .eer and .eer.mdoc files
-falcon4_source_dir = "/data/Microscopy/titan2/Villa_20251028_100000_SYC"
+falcon4_source_dir = "/data/Microscopy/titan2/Villa_20250820_100000_SYC"
 falcon4_eer_ngroups = 8
 
 # --- K3 Specific Settings ---
@@ -118,27 +123,28 @@ template_matching_params = {
 # --- particle export Settings ---
 subtomo_params = {
     "3d": True,
-    "--input_directory": "warp_tiltseries/matching/filtered",
-    "--input_pattern": "*.star",
-    "--coords_angpix": 10,
-    "--output_star": "relion32_bin4/3DTM.star",
-    "--output_angpix": angpix * FINAL_NEWSTACK_BIN / 2,
-    "--output_processing": "relion32_bin4",
+    "--input_directory": "../dynamo/flip_combine_with_clean",
+    "--input_pattern": "pf12_d3.star",
+    "--coords_angpix": "10",
+    "--output_star": "relion32_bin4_pf12/pf12.star",
+    "--output_angpix": angpix * 4,
+    "--output_processing": "relion32_bin4_pf12",
     "--box": 72,
-    "--diameter": 350
+    "--diameter": 450
 }
 
 # --- m refine Settings ---
 m_refine_params = {
-    "directory": "7p48_to1p87_clean_test",
-    "population_name" : "1set",
-    "relion_folder" : f"{base_dir}/251028_HSC_2d/relion32_7p48",
+    "directory": "3p74_to1p87_r2",
+    "population_name" : "2set",
+    "relion_folder" : f"{base_dir}/ribo_relion/relion5_3p74A",
+    "input_angpix" : 3.74,
     "source_names" : [
         {"dataset": "251028_HSC_2d", "name":"m_full_251028"},
-        # {"dataset": "251113_HSC_rest", "name":"m_full_251113"},
+        {"dataset": "251113_HSC_rest", "name":"m_full_251113"},
     ],
     "species": [
-        {"name":"ribosome", "job":"fc_mr1","mask":"ms1_it077_2_3_6/"},
+        {"name":"ribosome", "job":"mr2_1p8","mask":"ini_2_3_6/"},
         # {"name":"ribosome_eEF2","job":"eEF2_c25_mr1","mask":"eEF2_c2_3_3_6"},
         # {"name": "ribosome_AT", "job": "AT_c3_mr1", "mask": "AT_c3_3_3_6"},
         # {"name": "ribosome_AA", "job": "AA_c4_mr1", "mask": "AA_c4_3_3_6"},

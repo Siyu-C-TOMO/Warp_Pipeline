@@ -6,6 +6,7 @@ import sys
 import os
 from pathlib import Path
 
+sys.path.insert(0, os.getcwd())
 import config as cfg
 from pipeline_utils import run_command, filter_star_file
 from command_builder import (
@@ -226,7 +227,7 @@ def subtomo_extraction(log_file_path: Path):
 
 def m_refinement(log_file_path: Path):
     """Run the M refinement stage of the pipeline."""
-    m_dir = Path("ribo_m")
+    m_dir = Path("MT_m")
     cmd_log_dir = m_dir / cfg.m_refine_params['directory'] / "logs"
     env = os.environ.copy()
 

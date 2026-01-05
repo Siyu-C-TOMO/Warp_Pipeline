@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 
 from pathlib import Path
+
+import os
+import sys
+sys.path.insert(0, os.getcwd())
 import config as cfg
 
 def build_reconstruction_command(jobs_per_gpu, gpu_devices):
@@ -130,16 +134,20 @@ def build_m_population_command(m_refine_params):
             "MTools", "create_species",
             "--population", f"{m_refine_params['directory']}/{m_refine_params['population_name']}.population",
             "--name", species["name"],
-            "--diameter", "350",
+            "--diameter", "450",
             "--sym", "C1",
             "--temporal_samples", "1",
             "--half1", f"{m_refine_params['relion_folder']}/Refine3D/{species['job']}/run_half1_class001_unfil.mrc",
             "--half2", f"{m_refine_params['relion_folder']}/Refine3D/{species['job']}/run_half2_class001_unfil.mrc",
             "--mask", f"{m_refine_params['relion_folder']}/MaskCreate/{species['mask']}/mask.mrc",
             "--particles_relion", f"{m_refine_params['relion_folder']}/Refine3D/{species['job']}/run_data.star",
-            "--angpix_coords", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
+            "--angpix_coords", str(m_refine_params["input_angpix"]),
             "--angpix_resample", str(cfg.angpix*2),
-            "--lowpass", "10",
+            "--lowpass", "15",
+            "--helical_units", "3",
+            "--helical_twist", "29.88",
+            "--helical_rise", "10.98",
+            "--helical_height", "43",
         ])
     
     return [pop_cmd] + source_cmds + species_cmds
@@ -158,8 +166,8 @@ def build_m_refine_command(m_refine_params):
         f"EstimateWeights {population} --source m_full* --resolve_frames",
         f"MCore {population} --iter 5 --refine_particles {device}",
         f"MCore {population} --iter 5 --refine_imagewarp 4x4 --refine_particles --ctf_defocus --refine_mag --ctf_cs --ctf_zernike3 --refine_stageangles {device}",
-        f"MTools resample_trajectories {population} --species {m_refine_params['directory']}/species/*/*.species --samples 3",
-        f"MCore {population} --iter 5 --refine_imagewarp 4x4 --refine_particles --ctf_defocus --refine_mag --ctf_cs --ctf_zernike3 --refine_stageangles {device}"
+        # f"MTools resample_trajectories {population} --species {m_refine_params['directory']}/species/*/*.species --samples 3",
+        # f"MCore {population} --iter 5 --refine_imagewarp 4x4 --refine_particles --ctf_defocus --refine_mag --ctf_cs --ctf_zernike3 --refine_stageangles {device}"
     ]
     return cmds
 # --- Commands for run_pipeline.py ---

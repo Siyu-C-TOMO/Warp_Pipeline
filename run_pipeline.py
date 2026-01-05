@@ -8,6 +8,7 @@ import subprocess
 import shutil
 from pathlib import Path
 
+sys.path.insert(0, os.getcwd())
 import etomo_align
 import config as cfg
 from pipeline_utils import (
@@ -287,9 +288,9 @@ def main():
     )
     args = parser.parse_args()
 
-    base_dir = Path.cwd()
-    dataset_dir = base_dir / cfg.dataset_name
-    dataset_dir.mkdir(exist_ok=True)
+    dataset_dir = Path.cwd()
+    if dataset_dir.name != cfg.dataset_name:
+        logging.warning(f"⚠️  Current directory name '{dataset_dir.name}' matches config '{cfg.dataset_name}'?")
 
     logs_dir = dataset_dir / "logs"
     logs_dir.mkdir(exist_ok=True)
@@ -306,6 +307,7 @@ def main():
     
     logging.info(f"Processing will run in: {dataset_dir}")
     logging.info(f"Main log file for this run is: {log_file_path.resolve()}")
+    logging.info(f"Loaded configuration from: {cfg.__file__}")
 
     if args.stage in ['all', 'preprocess'] and cfg.camera_type == "Falcon4":
         logging.info("Falcon4 camera type detected. Checking if data reorganization is needed...")

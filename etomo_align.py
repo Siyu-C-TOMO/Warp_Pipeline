@@ -2,6 +2,8 @@
 
 import glob
 import os
+import sys
+sys.path.insert(0, os.getcwd())
 import config as cfg
 import subprocess
 from default_adoc import PARAMS as default_adoc_params

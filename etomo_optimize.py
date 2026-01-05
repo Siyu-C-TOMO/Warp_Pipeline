@@ -10,6 +10,7 @@ from pathlib import Path
 from functools import partial
 
 from pipeline_utils import read_align_log, read_fiducial_file, LogParsingError, run_command
+sys.path.insert(0, os.getcwd())
 
 # --- Configuration and Constants ---
 try:
