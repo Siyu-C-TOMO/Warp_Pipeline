@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import json
 import pandas as pd
 from multiprocessing import Pool
 import logging
@@ -260,10 +261,18 @@ class eTomoOptimizer:
         try:
             views_to_exclude, contours_to_include = self._analyze_alignment_logs()
 
-            # if self.ts_name.startswith("20251113_L17_G1"):
-                # views_to_exclude.extend([str(i) for i in range(1, 4)])
-                # views_to_exclude.extend([str(i) for i in range(21, 30)])
-
+            bad_tilt_file = "bad_tilt.json"
+            if os.path.exists(bad_tilt_file):
+                with open(bad_tilt_file, 'r') as f:
+                    bad_tilts_map = json.load(f)
+                
+                if self.ts_name in bad_tilts_map:
+                    extra_views = [str(i) for i in bad_tilts_map[self.ts_name]]
+                    views_to_exclude.extend(extra_views)
+            else:
+                self.logger.warning(f"{bad_tilt_file} not found. Proceeding without manual exclusions.")
+            views_to_exclude = list(set(views_to_exclude))
+            
             self.logger.info(f'Pruning: {len(views_to_exclude)} views to exclude and {len(contours_to_include)} contours to include.')
             self._prune_fiducial_model(contours_to_include)
             views_to_exclude_str = ','.join(views_to_exclude) if views_to_exclude else '0'

@@ -7,26 +7,26 @@
 # Modifications here ONLY affect the current dataset run.
 
 # --- General Settings ---
-dataset_name = "20250820_HSC_4hr"
+dataset_name = "260401_Janelia_HSC"
 raw_directory = "/data/Microscopy/Titan/Siyu" 
 # Path to where you would like to save your raw data
 # Titan2 data will be moved there and there might be no copy of your raw data in the original place
 frame_folder = "frames"
 mdoc_folder = "mdocs"
-gain_ref = "wrong.gain"
-tomo_match_string = "L" 
+gain_ref = "20260331_180123_EER_GainReference.gain"
+tomo_match_string = "20260401_Position" 
 
 # --- Key Acquisition Parameters ---
-angpix = 0.935
-dose = 5.172
-tilt_axis_angle = 84.48
+angpix = 1.56
+dose = 4.24
+tilt_axis_angle = 83.24
 thickness_pxl = 3000
 camera_type = "Falcon4" # Switch between "K3" or "Falcon4"
 
 # --- Falcon4 Specific Settings ---
 # The source directory containing raw .eer and .eer.mdoc files
-falcon4_source_dir = "/data/Microscopy/titan2/Villa_20250820_100000_SYC"
-falcon4_eer_ngroups = 8
+falcon4_source_dir = "/data/Microscopy/titan2/Villa_20260116_100000_SYC"
+falcon4_eer_ngroups = 16
 
 # --- K3 Specific Settings ---
 k3_frame_num = 8
@@ -38,7 +38,7 @@ k3_frame_num = 8
 # --- Computing Resources ---
 import os
 gpu_devices = [int(x) for x in os.environ.get('CUDA_VISIBLE_DEVICES', '0').split(',')]
-jobs_per_gpu = 1
+jobs_per_gpu = 2
 etomo_cpu_cores = 8
 
 # --- Base Path ---
@@ -135,16 +135,17 @@ subtomo_params = {
 
 # --- m refine Settings ---
 m_refine_params = {
-    "directory": "3p74_to1p87_r2",
-    "population_name" : "2set",
+    "directory": "3p74_to1p87_3set_try2",
+    "population_name" : "3set",
     "relion_folder" : f"{base_dir}/ribo_relion/relion5_3p74A",
     "input_angpix" : 3.74,
     "source_names" : [
         {"dataset": "251028_HSC_2d", "name":"m_full_251028"},
         {"dataset": "251113_HSC_rest", "name":"m_full_251113"},
+        {"dataset": "20250820_HSC_4hr", "name":"m_full_20250820"},
     ],
     "species": [
-        {"name":"ribosome", "job":"mr2_1p8","mask":"ini_2_3_6/"},
+        {"name":"ribosome", "job":"mr2_global","mask":"ini_2_3_6"},
         # {"name":"ribosome_eEF2","job":"eEF2_c25_mr1","mask":"eEF2_c2_3_3_6"},
         # {"name": "ribosome_AT", "job": "AT_c3_mr1", "mask": "AT_c3_3_3_6"},
         # {"name": "ribosome_AA", "job": "AA_c4_mr1", "mask": "AA_c4_3_3_6"},

@@ -35,7 +35,7 @@ def reconstruction(log_file_path: Path):
 
     logging.info("Running WarpTools ts_reconstruct...")
     env = os.environ.copy()
-    # env['WARP_FORCE_MRC_FLOAT32'] = '1'
+    env['WARP_FORCE_MRC_FLOAT32'] = '1'
     cmd_reconstruct = build_reconstruction_command(cfg.jobs_per_gpu, cfg.gpu_devices)
     run_command(cmd_reconstruct, log_file_path, env=env)
 
@@ -86,9 +86,10 @@ def isonet(log_file_path: Path):
     Path(isonet_dir / tomo_folder).mkdir(parents=True, exist_ok=True)
 
     for tomo in tomo_list:
-        source = Path(f"warp_tiltseries/tiltstack/{tomo}").resolve()
+        # source = Path(f"warp_tiltseries/tiltstack/{tomo}").resolve()
+        source = Path("warp_tiltseries/reconstruction/deconv_flip/").resolve()
         target = isonet_dir / tomo_folder / f"{tomo}.mrc"
-        source_files = list(source.glob("*dev.mrc"))
+        source_files = list(source.glob(f"{tomo}*_10.00Apx.mrc"))
         if not source_files:
             logging.warning(f"No _dev.mrc file found for tomogram {tomo}")
             continue
@@ -158,7 +159,8 @@ def cryolo(log_file_path: Path):
                 "cryolo_boxmanager_tools.py", "coords2star",
                 "-i", str(cryolo_dir / output_dir / coords_file),
                 "-o", str(raw_star_dir),
-                "--apix", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN)
+                # "--apix", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN)
+                "--apix", "10"
             ]
             run_command(cmd_coords, to_star_log_dir / f"{tomo}.log", module_load="cryolo")
 
@@ -176,9 +178,10 @@ def cryolo(log_file_path: Path):
     subtomo_params = {
         "--input_directory": str(cryolo_dir / output_dir / "STAR"),
         "--input_pattern": "*.star",
-        "--coords_angpix": str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
+        # "--coords_angpix": str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
+        "--coords_angpix": "10",
         "--output_star": f"relion32_cryolo_expand/cryolo_{output_dir}.star",
-        "--output_angpix": str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
+        "--output_angpix": str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN / 2),
         "--output_processing": "relion32_cryolo_expand/",
         "--box": "72",
         "--diameter": "350",
@@ -227,7 +230,7 @@ def subtomo_extraction(log_file_path: Path):
 
 def m_refinement(log_file_path: Path):
     """Run the M refinement stage of the pipeline."""
-    m_dir = Path("MT_m")
+    m_dir = Path("ribo_m")
     cmd_log_dir = m_dir / cfg.m_refine_params['directory'] / "logs"
     env = os.environ.copy()
 

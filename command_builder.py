@@ -81,6 +81,8 @@ def build_subtomo_extraction_command(params, jobs_per_gpu, gpu_devices):
     cmd = [
         "WarpTools", "ts_export_particles",
         "--settings", "warp_tiltseries.settings",
+        "--input_directory", params["--input_directory"],
+        "--input_pattern", params["--input_pattern"],
         "--input_processing", "warp_tiltseries",
         "--coords_angpix", str(params["--coords_angpix"]),
         "--output_star", params["--output_star"],
@@ -91,17 +93,12 @@ def build_subtomo_extraction_command(params, jobs_per_gpu, gpu_devices):
         "--diameter", str(params["--diameter"]),
         "--perdevice", str(jobs_per_gpu),
     ]
-
-    if "--input_star" in params:
-        cmd.extend(["--input_star", params["--input_star"]])
-    elif "--input_directory" in params:
-        cmd.extend(["--input_directory", params["--input_directory"]])
-        cmd.extend(["--input_pattern", params.get("--input_pattern", "*.star")])
-    else:
-        raise ValueError("Missing input source: --input_star or --input_directory must be provided in params.")
-
     cmd.extend(["--device_list"] + [str(d) for d in gpu_devices])
-    cmd.append("--3d") if params.get("3d", True) else cmd.append("--2d")
+    if params.get("3d", True):
+        cmd.append("--3d")
+        cmd.extend(["--max_missing_tilts", "999"])
+    else:
+        cmd.append("--2d")
     return cmd
 
 def build_m_population_command(m_refine_params):
@@ -130,7 +127,7 @@ def build_m_population_command(m_refine_params):
     
     species_cmds = []
     for species in m_refine_params["species"]:
-        species_cmds.append([
+        base_cmd = [
             "MTools", "create_species",
             "--population", f"{m_refine_params['directory']}/{m_refine_params['population_name']}.population",
             "--name", species["name"],
@@ -144,11 +141,15 @@ def build_m_population_command(m_refine_params):
             "--angpix_coords", str(m_refine_params["input_angpix"]),
             "--angpix_resample", str(cfg.angpix*2),
             "--lowpass", "15",
-            "--helical_units", "3",
-            "--helical_twist", "29.88",
-            "--helical_rise", "10.98",
-            "--helical_height", "43",
-        ])
+        ]
+        if species["name"] in ["pf12", "pf13"]:
+            base_cmd.extend([
+                "--helical_units", "3",
+                "--helical_twist", "29.88" if species["name"] == "pf12" else "27.69",
+                "--helical_rise", "10.92" if species["name"] == "pf12" else "9.64",
+                "--helical_height", "43",
+            ])
+        species_cmds.append(base_cmd)
     
     return [pop_cmd] + source_cmds + species_cmds
 
