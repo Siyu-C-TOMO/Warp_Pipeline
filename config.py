@@ -7,26 +7,26 @@
 # Modifications here ONLY affect the current dataset run.
 
 # --- General Settings ---
-dataset_name = "260401_Janelia_HSC"
+dataset_name = "260407_abeta_endosome_screen"
 raw_directory = "/data/Microscopy/Titan/Siyu" 
 # Path to where you would like to save your raw data
 # Titan2 data will be moved there and there might be no copy of your raw data in the original place
 frame_folder = "frames"
 mdoc_folder = "mdocs"
-gain_ref = "20260331_180123_EER_GainReference.gain"
-tomo_match_string = "20260401_Position" 
+gain_ref = "NONE"
+tomo_match_string = "20260407" 
 
 # --- Key Acquisition Parameters ---
-angpix = 1.56
+angpix = 1.561
 dose = 4.24
-tilt_axis_angle = 83.24
+tilt_axis_angle = 84.4
 thickness_pxl = 3000
 camera_type = "Falcon4" # Switch between "K3" or "Falcon4"
 
 # --- Falcon4 Specific Settings ---
 # The source directory containing raw .eer and .eer.mdoc files
-falcon4_source_dir = "/data/Microscopy/titan2/Villa_20260116_100000_SYC"
-falcon4_eer_ngroups = 16
+falcon4_source_dir = "/data/Microscopy/titan2/Villa_20260407_100000_SYC"
+falcon4_eer_ngroups = 8
 
 # --- K3 Specific Settings ---
 k3_frame_num = 8
@@ -40,6 +40,7 @@ import os
 gpu_devices = [int(x) for x in os.environ.get('CUDA_VISIBLE_DEVICES', '0').split(',')]
 jobs_per_gpu = 2
 etomo_cpu_cores = 8
+gapstop_workers = 24
 
 # --- Base Path ---
 base_dir = "/data/workspace/Siyu/Titan1_Processing"
@@ -118,6 +119,22 @@ template_matching_params = {
     "symmetry": "C1",
     "input_data": "NONE",  # Path to the matching.txt file; if "NONE", will run with full tomoset
     "reuse_results": True
+}
+
+# --- gapstop Settings ---
+gapstop_params = {
+    "template": "ini_inv.mrc",
+    "mask": "spherical_rad26_gaus2.mrc",
+    "angle_file": "angles_10_C1.txt",    
+    "particle_diameter": 28,
+    "scores_threshold": 0.07,
+    "sigma_threshold": None,
+    "cluster_size": None,
+    "n_particles": None,
+    "output_type": "stopgap",
+    "angles_order": "zxz",
+    "symmetry": "c1",
+    "angles_numbering": 0,
 }
 
 # --- particle export Settings ---

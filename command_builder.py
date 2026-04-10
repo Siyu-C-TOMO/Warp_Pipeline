@@ -3,8 +3,10 @@
 from pathlib import Path
 
 import os
+import shlex
 import sys
-sys.path.insert(0, os.getcwd())
+script_dir = Path(__file__).resolve().parent
+sys.path.insert(0, str(script_dir))
 import config as cfg
 
 def build_reconstruction_command(jobs_per_gpu, gpu_devices):
@@ -74,6 +76,36 @@ def build_template_match_command(params, jobs_per_gpu, gpu_devices):
     if params.get('reuse_results', True):
         cmd.append("--reuse_results")
     
+    return cmd
+
+def build_gapstop_wedge_command(params, tomo_name, tomo_id):
+    """Generates the command to create a wedge file using cryocat wedgeutils."""
+    x = cfg.pipeline_params['original_x_y_size'][0]
+    y = cfg.pipeline_params['original_x_y_size'][1]
+    z = cfg.thickness_pxl
+    pixel_size = cfg.angpix
+    xml = f"{cfg.base_dir}/{cfg.dataset_name}/warp_tiltseries/{tomo_name}.xml"
+    ctf_file_type = 'warp'
+    script_content = f"""from cryocat import wedgeutils
+
+wedgeutils.create_wedge_list_sg(
+    tomo_id = {tomo_id},
+    tomo_dim = [{x}, {y}, {z}],
+    pixel_size = {pixel_size},
+    tlt_file = \"{xml}\",
+    z_shift=0.0,
+    ctf_file = \"{xml}\",
+    ctf_file_type=\"{ctf_file_type}\",
+    dose_file = \"{xml}\",
+    voltage=300.0,
+    amp_contrast=0.07,
+    cs=2.7,
+    output_file = \"wedge_{tomo_name}.star\",
+    drop_nan_columns=True
+)
+"""
+    
+    cmd = f"python3 -c {shlex.quote(script_content)}"
     return cmd
 
 def build_subtomo_extraction_command(params, jobs_per_gpu, gpu_devices):

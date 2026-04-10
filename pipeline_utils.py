@@ -9,6 +9,8 @@ import shutil
 from pathlib import Path
 from typing import List, Tuple, Iterator, Dict, Optional, Union
 
+import multiprocessing
+
 # --- Data Reorganization ---
 
 def reorganize_falcon4_data(config, logs_dir: Path):
@@ -197,6 +199,43 @@ def run_command(
     except FileNotFoundError:
         cmd_name = command[0] if isinstance(command, list) else command.split()[0]
         logging.error(f"Command not found: {cmd_name}. Ensure it is in the system's PATH.")
+        raise
+
+
+def run_parallel_tasks(
+    worker_fn,
+    tasks,
+    num_workers: Optional[int] = None,
+    chunksize: int = 1,
+    logger: Optional[logging.Logger] = None,
+    use_starmap: bool = False,
+):
+    """Run a list of tasks in parallel using multiprocessing.Pool.
+
+    Args:
+        worker_fn: Callable to execute for each task.
+        tasks: Iterable of task inputs. Each item is passed to worker_fn.
+        num_workers: Number of worker processes. Defaults to cpu_count().
+        chunksize: Chunk size for Pool.map/starmap.
+        logger: Optional logger for error reporting.
+        use_starmap: If True, tasks should be iterables of args for starmap.
+
+    Returns:
+        List of results from the worker function.
+    """
+    logger = logger or logging.getLogger(__name__)
+    if num_workers is None:
+        num_workers = max(1, multiprocessing.cpu_count() - 1)
+
+    try:
+        with multiprocessing.Pool(num_workers) as pool:
+            if use_starmap:
+                results = pool.starmap(worker_fn, tasks, chunksize=chunksize)
+            else:
+                results = pool.map(worker_fn, tasks, chunksize=chunksize)
+        return results
+    except Exception as e:
+        logger.error(f"Parallel execution failed: {e}", exc_info=True)
         raise
 
 # --- XML Parsing (from xml_parser.py) ---

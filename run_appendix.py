@@ -5,10 +5,11 @@ import logging
 import sys
 import os
 from pathlib import Path
+from typing import Dict
 
 sys.path.insert(0, os.getcwd())
 import config as cfg
-from pipeline_utils import run_command, filter_star_file
+from pipeline_utils import run_command, filter_star_file, run_parallel_tasks
 from command_builder import (
     build_m_refine_command,
     build_m_population_command,
@@ -17,6 +18,7 @@ from command_builder import (
     build_cryolo_commands,
     build_template_match_command,
     build_subtomo_extraction_command,
+    build_gapstop_wedge_command
 )
 
 try:
@@ -214,6 +216,123 @@ def template_match_3D(log_file_path: Path):
     run_command(cmd_template_match, log_file_path, env=env, module_load="warp/2.0.0dev36")
     logging.info("--- WarpTools ts_template_match completed. ---")
 
+
+def _gapstop_wedge_worker(tomo, tomo_id, wedge_dir, env, log_dir):
+    wedge_star_path = wedge_dir / f"wedge_{tomo}.star"
+    wedge_log_path = log_dir / f"{tomo}.log"
+    if wedge_star_path.exists():
+        return f"Skipped {tomo}: wedge file exists"
+
+    cmd_wedge = build_gapstop_wedge_command(cfg.gapstop_params, tomo, tomo_id)
+    run_command(cmd_wedge, wedge_log_path, cwd=wedge_dir, env=env, module_load="gapstop/0.3")
+    return f"Completed {tomo}"
+
+
+def template_match_gapstop(log_file_path: Path):
+    """Run the 3D template matching using gapstop.
+    0. Make sure eTomo and Warp reconstruction shares the same coordinate
+    1. create models and maps -- one for all tomograms
+    2. create _anglist_name file -- also one for all tomograms
+    0-2 are all done outof the box, and required files will be checked before running. Throw error if missing.
+    3. create wedge.star -- one file for each tomogram. _tomo_num matches, _defocus is unique. Use _ = wedgeutils.create_wedge_list_sg() to create each one
+    4. create tm_param.star -- one row for each tomogram. _tomo_name _tomo_num _wedgelist_name _smap_name _omap_name are unique
+    5. test run
+    6. use tmana.scores_extract_particles() to check on the result
+    """
+
+    # Check for required files before running
+    gapstop_dir = Path("gapstop")
+    wedge_dir = gapstop_dir / "wedge"
+    wedge_dir.mkdir(parents=True, exist_ok=True)
+    required_files = [
+        gapstop_dir / cfg.gapstop_params['template'],
+        gapstop_dir / cfg.gapstop_params['mask'],
+        gapstop_dir / cfg.gapstop_params['angle_file'],
+    ]
+    for f in required_files:
+        if not f.exists():
+            logging.error(f"Required file not found: {f.resolve()}")
+            sys.exit(1)
+
+    list_file = Path('ribo_list_final.txt')
+    if not list_file.exists():
+        logging.error(f"tomogram list file does not exist in the current directory: {list_file.resolve()}")
+        sys.exit(1)
+    
+    tomo_list = [line.split()[0] for line in list_file.read_text().strip().splitlines()]
+    logging.info(f"Found {len(tomo_list)} tomograms in the list.")
+
+    # create wedge.star for each tomogram using wedgeutils.create_wedge_list_sg() and save as wedge_{tomo_num}.star
+    env = os.environ.copy()
+    logging.info(f"--- Starting gapstop 3D template matching ---")
+    wedge_log_dir = gapstop_dir / "logs" / "wedge"
+    wedge_log_dir.mkdir(parents=True, exist_ok=True)
+
+    task_args = []
+    for i, tomo in enumerate(tomo_list, 1):
+        wedge_star_path = wedge_dir / f"wedge_{tomo}.star"
+        if not wedge_star_path.exists():
+            task_args.append((tomo, i, wedge_dir, env, wedge_log_dir))
+        else:
+            logging.info(f"Wedge star already exists for {tomo}, skipping: {wedge_star_path.resolve()}")
+
+    if task_args:
+        results = run_parallel_tasks(
+            _gapstop_wedge_worker,
+            task_args,
+            num_workers=cfg.gapstop_workers,
+            logger=logging.getLogger(__name__),
+            use_starmap=True,
+        )
+        for res in results:
+            logging.info(res)
+    else:
+        logging.info("All wedge files already exist, skipping parallel wedge generation.")
+
+    tm_param_path = gapstop_dir / "tm_param.star"
+    
+    template_path = Path(__file__).parent / "tm_param_template.star"
+    with open(template_path, 'r') as f:
+        template = f.read()
+    
+    rootdir = gapstop_dir.resolve()
+    outputdir = "tm_outputs/"
+    vol_ext = ".mrc"
+    tmpl_name = Path(cfg.gapstop_params['template']).name
+    mask_name = Path(cfg.gapstop_params['mask']).name
+    anglist_name = Path(cfg.gapstop_params['angle_file']).name
+    symmetry = "C1"
+    anglist_order = "zxz"
+    smap_name = "scores"
+    omap_name = "angles"
+    lp_rad = 16
+    hp_rad = 1
+    binning = 8
+    tiling = "new"
+    
+    tomogram_rows = []
+    for i, tomo in enumerate(tomo_list, 1):
+        tomo_name = f"../warp_tiltseries/reconstruction/{tomo}_{cfg.angpix * cfg.FINAL_NEWSTACK_BIN}Apx.mrc"
+        wedgelist_name = f"wedge/wedge_{tomo}.star"
+        row = f"{rootdir} {outputdir} {vol_ext} {tomo_name} {i} {wedgelist_name} {tmpl_name} {mask_name} {symmetry} {anglist_order} {anglist_name} {smap_name} {omap_name} {lp_rad} {hp_rad} {binning} {tiling}"
+        tomogram_rows.append(row)
+    
+    tm_param_content = template.replace("{TOMOGRAM_ROWS}", "\n".join(tomogram_rows))
+    with open(tm_param_path, 'w') as f:
+        f.write(tm_param_content)
+    
+    logging.info(f"Generated tm_param.star with {len(tomo_list)} tomograms: {tm_param_path.resolve()}")
+
+    gapstop_cmd = ["gapstop", "run_tm", "-n", "16", "tm_param.star"]
+    run_command(gapstop_cmd, log_file_path, env=env, module_load="gapstop/0.3")
+    # TODO: Add result parsing using tmana.scores_extract_particles()
+    # Example: tmana.scores_extract_particles(tm_param.star, output_dir)  
+    
+
+    logging.info("--- gapstop 3D template matching completed. ---")  
+
+
+
 def subtomo_extraction(log_file_path: Path):
     """Run the particle extraction stage of the pipeline."""
     env = os.environ.copy()
@@ -259,7 +378,7 @@ def main():
     parser.add_argument(
         '--stage',
         type=str,
-        choices=['isonet', 'cryolo', 'reconstruct', '3DTM', 'subtomo', 'm_refine'],
+        choices=['isonet', 'cryolo', 'reconstruct', '3DTM', 'subtomo', 'm_refine', 'gapstop'],
         help="Which stage of the pipeline to run."
     )
     parser.add_argument('--input_list', type=str, default=None, help="Override input list file for 3DTM")
@@ -297,7 +416,8 @@ def main():
             'cryolo': cryolo,
             '3DTM': template_match_3D,
             'subtomo': subtomo_extraction,
-            'm_refine': m_refinement
+            'm_refine': m_refinement,
+            'gapstop': template_match_gapstop
         }
         if args.stage in stage_map:
             stage_map[args.stage](log_file_path)

@@ -10,7 +10,7 @@ from typing import List, Tuple, Union, Dict
 from pathlib import Path
 from functools import partial
 
-from pipeline_utils import read_align_log, read_fiducial_file, LogParsingError, run_command
+from pipeline_utils import read_align_log, read_fiducial_file, LogParsingError, run_command, run_parallel_tasks
 sys.path.insert(0, os.getcwd())
 
 # --- Configuration and Constants ---
@@ -23,6 +23,7 @@ try:
     THICKNESS_PXL = cfg.thickness_pxl
     FINAL_NEWSTACK_BIN = cfg.FINAL_NEWSTACK_BIN
     CAMERA_TYPE = cfg.camera_type
+    SOURCE_TILT_EXCLUSIONS = Path(cfg.raw_directory) / cfg.dataset_name / "bad_tilt.json"
 except ImportError:
     logging.warning("Could not import config.py. Using fallback default values.")
     NUM_CPU_CORES = 8
@@ -32,6 +33,7 @@ except ImportError:
     THICKNESS_PXL = 3000
     FINAL_NEWSTACK_BIN = 8
     CAMERA_TYPE = "Falcon4"
+    SOURCE_TILT_EXCLUSIONS = Path('bad_tilt.json')
 
 os.environ['NUMEXPR_MAX_THREADS'] = str(NUM_CPU_CORES)
 
@@ -261,7 +263,7 @@ class eTomoOptimizer:
         try:
             views_to_exclude, contours_to_include = self._analyze_alignment_logs()
 
-            bad_tilt_file = "bad_tilt.json"
+            bad_tilt_file = SOURCE_TILT_EXCLUSIONS
             if os.path.exists(bad_tilt_file):
                 with open(bad_tilt_file, 'r') as f:
                     bad_tilts_map = json.load(f)
@@ -271,7 +273,7 @@ class eTomoOptimizer:
                     views_to_exclude.extend(extra_views)
             else:
                 self.logger.warning(f"{bad_tilt_file} not found. Proceeding without manual exclusions.")
-            views_to_exclude = list(set(views_to_exclude))
+            views_to_exclude = sorted(set(views_to_exclude), key=int)
             
             self.logger.info(f'Pruning: {len(views_to_exclude)} views to exclude and {len(contours_to_include)} contours to include.')
             self._prune_fiducial_model(contours_to_include)
@@ -336,10 +338,9 @@ def run_optimization_pipeline(tiltstack_dir: Path, main_logs_dir: Path):
     
     worker_with_logs = partial(optimization_worker, tomogram_logs_dir=tomogram_logs_dir)
     
-    with Pool(NUM_CPU_CORES) as pool:
-        results = pool.map(worker_with_logs, tomo_list)
-        for res in results:
-            main_logger.info(res)
+    results = run_parallel_tasks(worker_with_logs, tomo_list, num_workers=NUM_CPU_CORES, logger=main_logger)
+    for res in results:
+        main_logger.info(res)
             
     main_logger.info("All optimization tasks are complete.")
 
