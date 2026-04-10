@@ -5,7 +5,7 @@ import logging
 import sys
 import os
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List
 
 sys.path.insert(0, os.getcwd())
 import config as cfg
@@ -18,7 +18,8 @@ from command_builder import (
     build_cryolo_commands,
     build_template_match_command,
     build_subtomo_extraction_command,
-    build_gapstop_wedge_command
+    build_gapstop_wedge_command,
+    build_gapstop_result_command
 )
 
 try:
@@ -217,14 +218,41 @@ def template_match_3D(log_file_path: Path):
     logging.info("--- WarpTools ts_template_match completed. ---")
 
 
-def _gapstop_wedge_worker(tomo, tomo_id, wedge_dir, env, log_dir):
+def _gapstop_wedge_worker(tomo, tomo_id, wedge_dir, env, wedge_log_dir):
     wedge_star_path = wedge_dir / f"wedge_{tomo}.star"
-    wedge_log_path = log_dir / f"{tomo}.log"
+    wedge_log_path = wedge_log_dir / f"{tomo}.log"
     if wedge_star_path.exists():
         return f"Skipped {tomo}: wedge file exists"
 
     cmd_wedge = build_gapstop_wedge_command(cfg.gapstop_params, tomo, tomo_id)
     run_command(cmd_wedge, wedge_log_path, cwd=wedge_dir, env=env, module_load="gapstop/0.3")
+    return f"Completed {tomo}"
+
+
+def _gapstop_result_worker(tomo, tomo_id, result_log_dir):
+    """Extract particles from GapStop template matching results."""
+    output_star_path = Path("results") / f"{tomo}.star"
+    result_log_path = result_log_dir / f"{tomo}.log"
+    gapstop_path = result_log_dir.parent.parent
+    if output_star_path.exists():
+        return f"Skipped {tomo}: result star exists"
+        
+    cmd_result = build_gapstop_result_command(
+        cfg.gapstop_params,
+        tomo_id,
+        str(output_star_path)
+    )
+    run_command(cmd_result, result_log_path, cwd=gapstop_path, module_load="gapstop/0.3")
+
+    if gapstop_path / output_star_path.exists():
+        lines = (gapstop_path / output_star_path).read_text().splitlines()
+        for i, line in enumerate(lines):
+            parts = line.split()
+            if len(parts) > 5 and parts[0] == str(tomo_id):
+                parts[0] = f"{tomo}.tomostar"
+                lines[i] = '\t'.join(parts)
+        (gapstop_path / output_star_path).write_text('\n'.join(lines) + '\n')
+
     return f"Completed {tomo}"
 
 
@@ -239,11 +267,11 @@ def template_match_gapstop(log_file_path: Path):
     5. test run
     6. use tmana.scores_extract_particles() to check on the result
     """
-
-    # Check for required files before running
     gapstop_dir = Path("gapstop")
     wedge_dir = gapstop_dir / "wedge"
     wedge_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = gapstop_dir / "results"
+    output_dir.mkdir(parents=True, exist_ok=True)
     required_files = [
         gapstop_dir / cfg.gapstop_params['template'],
         gapstop_dir / cfg.gapstop_params['mask'],
@@ -262,7 +290,6 @@ def template_match_gapstop(log_file_path: Path):
     tomo_list = [line.split()[0] for line in list_file.read_text().strip().splitlines()]
     logging.info(f"Found {len(tomo_list)} tomograms in the list.")
 
-    # create wedge.star for each tomogram using wedgeutils.create_wedge_list_sg() and save as wedge_{tomo_num}.star
     env = os.environ.copy()
     logging.info(f"--- Starting gapstop 3D template matching ---")
     wedge_log_dir = gapstop_dir / "logs" / "wedge"
@@ -303,8 +330,6 @@ def template_match_gapstop(log_file_path: Path):
     anglist_name = Path(cfg.gapstop_params['angle_file']).name
     symmetry = "C1"
     anglist_order = "zxz"
-    smap_name = "scores"
-    omap_name = "angles"
     lp_rad = 16
     hp_rad = 1
     binning = 8
@@ -314,6 +339,8 @@ def template_match_gapstop(log_file_path: Path):
     for i, tomo in enumerate(tomo_list, 1):
         tomo_name = f"../warp_tiltseries/reconstruction/{tomo}_{cfg.angpix * cfg.FINAL_NEWSTACK_BIN}Apx.mrc"
         wedgelist_name = f"wedge/wedge_{tomo}.star"
+        smap_name = f"scores"
+        omap_name = f"angles"
         row = f"{rootdir} {outputdir} {vol_ext} {tomo_name} {i} {wedgelist_name} {tmpl_name} {mask_name} {symmetry} {anglist_order} {anglist_name} {smap_name} {omap_name} {lp_rad} {hp_rad} {binning} {tiling}"
         tomogram_rows.append(row)
     
@@ -323,12 +350,34 @@ def template_match_gapstop(log_file_path: Path):
     
     logging.info(f"Generated tm_param.star with {len(tomo_list)} tomograms: {tm_param_path.resolve()}")
 
-    gapstop_cmd = ["gapstop", "run_tm", "-n", "16", "tm_param.star"]
-    run_command(gapstop_cmd, log_file_path, env=env, module_load="gapstop/0.3")
-    # TODO: Add result parsing using tmana.scores_extract_particles()
-    # Example: tmana.scores_extract_particles(tm_param.star, output_dir)  
-    
+    gapstop_cmd = ["gapstop", "run_tm", "-n", "8", "tm_param.star"]
+    # run_command(gapstop_cmd, log_file_path, cwd=gapstop_dir, env=env, module_load="gapstop/0.3")
 
+    logging.info("--- Starting parallel particle extraction from GapStop results ---")
+    result_log_dir = gapstop_dir / "logs" / "result"
+    result_log_dir.mkdir(parents=True, exist_ok=True)
+    
+    result_task_args = []
+    for i, tomo in enumerate(tomo_list, 1):
+        output_star = gapstop_dir / output_dir / f"{tomo}.star"
+        if not output_star.exists():
+            result_task_args.append((tomo, i, result_log_dir))
+        else:
+            logging.info(f"Result star already exists for {tomo}, skipping: {output_star.resolve()}")
+    
+    if result_task_args:
+        result_results = run_parallel_tasks(
+            _gapstop_result_worker,
+            result_task_args,
+            num_workers=cfg.gapstop_workers//12,
+            logger=logging.getLogger(__name__),
+            use_starmap=True,
+        )
+        for res in result_results:
+            logging.info(res)
+    else:
+        logging.info("All result star files already exist, skipping particle extraction.")
+    
     logging.info("--- gapstop 3D template matching completed. ---")  
 
 

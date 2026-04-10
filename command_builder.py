@@ -85,7 +85,6 @@ def build_gapstop_wedge_command(params, tomo_name, tomo_id):
     z = cfg.thickness_pxl
     pixel_size = cfg.angpix
     xml = f"{cfg.base_dir}/{cfg.dataset_name}/warp_tiltseries/{tomo_name}.xml"
-    ctf_file_type = 'warp'
     script_content = f"""from cryocat import wedgeutils
 
 wedgeutils.create_wedge_list_sg(
@@ -95,13 +94,60 @@ wedgeutils.create_wedge_list_sg(
     tlt_file = \"{xml}\",
     z_shift=0.0,
     ctf_file = \"{xml}\",
-    ctf_file_type=\"{ctf_file_type}\",
+    ctf_file_type=\'warp\',
     dose_file = \"{xml}\",
     voltage=300.0,
     amp_contrast=0.07,
     cs=2.7,
     output_file = \"wedge_{tomo_name}.star\",
     drop_nan_columns=True
+)
+"""
+    
+    cmd = f"python3 -c {shlex.quote(script_content)}"
+    return cmd
+
+def build_gapstop_result_command(params, tomo_id, output_star):
+    """Generates the command to extract particles from GapStop template matching results."""
+    scores_path = f"tm_outputs/scores_{tomo_id-1}_{tomo_id}.mrc"
+    angles_path = f"tm_outputs/angles_{tomo_id-1}_{tomo_id}.mrc"
+    pixel_size = cfg.angpix * cfg.FINAL_NEWSTACK_BIN
+    script_content = f"""from cryocat import tmana, cryomap, cryomotl
+
+scores = cryomap.read(\"{scores_path}\")
+angles = cryomap.read(\"{angles_path}\")
+
+motl = tmana.scores_extract_particles(
+    scores_map=scores,
+    angles_map=angles,
+    angles_list=\"{params['angle_file']}\",
+    tomo_id={tomo_id},
+    particle_diameter={params['particle_diameter']},
+    object_id=None,
+    scores_threshold={params['scores_threshold']},
+    sigma_threshold={params['sigma_threshold']},
+    cluster_size={params['cluster_size']},
+    n_particles={params['n_particles']},
+    output_path=None,
+    output_type=\"emmotl\",
+    angles_order=\"zxz\",
+    symmetry=\"{params['symmetry']}\",
+    angles_numbering=0,
+)
+
+rel_motl = cryomotl.RelionMotl(
+    input_motl=motl.df,
+    version=3.1, 
+    pixel_size={pixel_size}, 
+    binning=1, 
+)
+
+rel_motl.write_out(
+    output_path=\"{output_star}\",
+    use_original_entries=False,
+    write_optics=False,
+    pixel_size={pixel_size},
+    binning=1,
 )
 """
     
