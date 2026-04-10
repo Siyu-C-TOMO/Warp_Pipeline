@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 from typing import Dict, List
 
+from matplotlib import lines
+
 sys.path.insert(0, os.getcwd())
 import config as cfg
 from pipeline_utils import run_command, filter_star_file, run_parallel_tasks
@@ -244,14 +246,18 @@ def _gapstop_result_worker(tomo, tomo_id, result_log_dir):
     )
     run_command(cmd_result, result_log_path, cwd=gapstop_path, module_load="gapstop/0.3")
 
-    if gapstop_path / output_star_path.exists():
-        lines = (gapstop_path / output_star_path).read_text().splitlines()
+    target_file = gapstop_path / output_star_path
+    if target_file.exists():
+        lines = target_file.read_text().splitlines()
         for i, line in enumerate(lines):
+            line_stripped = line.strip()
+            if not line_stripped or line_stripped.startswith(('_', 'data_', 'loop_')):
+                continue
             parts = line.split()
-            if len(parts) > 5 and parts[0] == str(tomo_id):
+            if len(parts) > 5:
                 parts[0] = f"{tomo}.tomostar"
                 lines[i] = '\t'.join(parts)
-        (gapstop_path / output_star_path).write_text('\n'.join(lines) + '\n')
+        target_file.write_text('\n'.join(lines) + '\n')
 
     return f"Completed {tomo}"
 
