@@ -250,9 +250,6 @@ def _gapstop_result_worker(tomo, tomo_id, result_log_dir):
     if target_file.exists():
         lines = target_file.read_text().splitlines()
         for i, line in enumerate(lines):
-            line_stripped = line.strip()
-            if not line_stripped or line_stripped.startswith(('_', 'data_', 'loop_')):
-                continue
             parts = line.split()
             if len(parts) > 5:
                 parts[0] = f"{tomo}.tomostar"
@@ -357,7 +354,7 @@ def template_match_gapstop(log_file_path: Path):
     logging.info(f"Generated tm_param.star with {len(tomo_list)} tomograms: {tm_param_path.resolve()}")
 
     gapstop_cmd = ["gapstop", "run_tm", "-n", "8", "tm_param.star"]
-    # run_command(gapstop_cmd, log_file_path, cwd=gapstop_dir, env=env, module_load="gapstop/0.3")
+    run_command(gapstop_cmd, log_file_path, cwd=gapstop_dir, env=env, module_load="gapstop/0.3")
 
     logging.info("--- Starting parallel particle extraction from GapStop results ---")
     result_log_dir = gapstop_dir / "logs" / "result"

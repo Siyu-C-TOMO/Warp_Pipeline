@@ -30,6 +30,9 @@ A robust and flexible pipeline designed to streamline cryo-electron tomography (
   - [`cryolo`](#cryolo)
   - [`3DTM`](#3dtm)
   - [`reconstruction`](#reconstruction)
+  - [`subtomo`](#subtomo)
+  - [`m_refine`](#m_refine)
+  - [`gapstop`](#gapstop)
 - [Logging System](#logging-system)
 - [License](#license)
 - [Contact](#contact)
@@ -307,6 +310,26 @@ python /path/to/Warp_Pipeline/run_appendix.py --stage <module_name>
     1.  Runs `WarpTools ts_reconstruct` to generate the final tomogram.
     2.  Creates a `forWindows_frames` directory.
     3.  Creates symbolic links in this directory to the final reconstruction, average frame, `.xml` metadata, and `.tomostar` files, making it easy to archive or move the essential results.
+
+#### `subtomo`
+**Goal**: Extract subtomograms (particles) from reconstructed tomograms based on selected coordinates.
+* **Key Steps**:
+    1. Consolidates filtered particle coordinates (e.g., generated from CryoLo or 3DTM) and maps them to the corresponding tilt-series data.
+    2. Executes Warp's `ts_export_particles` routine to extract 3D sub-volumes with applied CTF models and normalization.
+
+#### `m_refine`
+**Goal**: Perform multi-particle, reference-based refinement using M to correct for local deformations, CTF variations, and sample movements, pushing structural resolution to its limits.
+* **Key Steps**:
+    1. Initializes an M "population" by integrating Warp tilt-series sources, filtered particle coordinates, and 3D reference maps (species).
+    2. Orchestrates an automated, multi-stage refinement workflow via `MCore`, iteratively optimizing particle poses, grid-based image warping, and higher-order CTF aberrations (e.g., defocus, astigmatism, stage angles).
+    3. Evaluates refinement weights and resamples particle trajectories, yielding highly accurate metadata for the final high-resolution 3D reconstruction.
+
+#### `gapstop`
+**Goal**: Evaluate and filter gapstop 3D template matching results.
+* **Key Steps**:
+    1.  Identifies target tomograms and prepares their corresponding 3DTM coordinate files for evaluation.
+    2.  Executes the GapStop module to assess structural features and score template matching candidates.
+    3.  Reformats the filtered `.star` files for Warp particle extraction and Relion refinement.
 
 ## Logging System
 
