@@ -278,6 +278,9 @@ python /path/to/Warp_Pipeline/run_appendix.py --stage <module_name>
 *   `cryolo`: Particle picking with CryoLo and particle extraction.
 *   `3DTM`: 3D template matching using Warp.
 *   `reconstruction`: Final reconstruction and packaging for Windows.
+*   `subtomo`: Subtomogram particle extraction from tomogram coordinates
+*   `m_refine`: Multi-particle reference-based refinement with M
+*   `gapstop`: GapStop picking for 3D template matching
 
 ### Module Details
 

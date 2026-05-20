@@ -15,6 +15,7 @@ def build_reconstruction_command(jobs_per_gpu, gpu_devices):
         "WarpTools", "ts_reconstruct",
         "--settings", "warp_tiltseries.settings",
         "--angpix", str(cfg.angpix * cfg.FINAL_NEWSTACK_BIN),
+        "--halfmap_frames",
         "--perdevice", str(jobs_per_gpu)
     ]
     cmd.extend(["--device_list"] + [str(d) for d in gpu_devices])
@@ -209,7 +210,7 @@ def build_m_population_command(m_refine_params):
             "MTools", "create_species",
             "--population", f"{m_refine_params['directory']}/{m_refine_params['population_name']}.population",
             "--name", species["name"],
-            "--diameter", "450",
+            "--diameter", "350",
             "--sym", "C1",
             "--temporal_samples", "1",
             "--half1", f"{m_refine_params['relion_folder']}/Refine3D/{species['job']}/run_half1_class001_unfil.mrc",
@@ -217,7 +218,8 @@ def build_m_population_command(m_refine_params):
             "--mask", f"{m_refine_params['relion_folder']}/MaskCreate/{species['mask']}/mask.mrc",
             "--particles_relion", f"{m_refine_params['relion_folder']}/Refine3D/{species['job']}/run_data.star",
             "--angpix_coords", str(m_refine_params["input_angpix"]),
-            "--angpix_resample", str(cfg.angpix*2),
+            "--angpix_resample", str(cfg.angpix),
+            # "--angpix_resample", "2",
             "--lowpass", "15",
         ]
         if species["name"] in ["pf12", "pf13"]:
@@ -234,7 +236,7 @@ def build_m_population_command(m_refine_params):
 def build_m_refine_command(m_refine_params):
     """Builds the command for the m refine stage."""
     population = f"--population {m_refine_params['directory']}/{m_refine_params['population_name']}.population"
-    device = "--perdevice_refine 3 --perdevice_preprocess 1 --perdevice_postprocess 1"
+    device = "--perdevice_refine 1 --perdevice_preprocess 1 --perdevice_postprocess 1"
     cmds = [
         f"MCore {population} --iter 0 {device}",
         f"MCore {population} --iter 5 --refine_imagewarp 4x4 --refine_particles --ctf_defocus --ctf_defocusexhaustive {device}",
