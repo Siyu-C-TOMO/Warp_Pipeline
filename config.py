@@ -7,26 +7,26 @@
 # Modifications here ONLY affect the current dataset run.
 
 # --- General Settings ---
-dataset_name = "20240328_A549TNT_EK"
-raw_directory = "/data/Microscopy/Titan" 
+dataset_name = "260504_Janelia_4hr_HSC"
+raw_directory = "/data/Microscopy/Titan/Siyu" 
 # Path to where you would like to save your raw data
 # Titan2 data will be moved there and there might be no copy of your raw data in the original place
 frame_folder = "frames"
 mdoc_folder = "mdocs"
-gain_ref = "CountRef_pol1_g1_ts_001_001_000_5.0.mrc"
-tomo_match_string = "pol" 
+gain_ref = "20260331_180123_EER_GainReference.gain"
+tomo_match_string = "2026050" 
 
 # --- Key Acquisition Parameters ---
-angpix = 1.729
-dose = 5.172
-tilt_axis_angle = -94.6
-thickness_pxl = 2500
-camera_type = "K3" # Switch between "K3" or "Falcon4"
+angpix = 1.56
+dose = 4.24
+tilt_axis_angle = 83.24
+thickness_pxl = 3000
+camera_type = "Falcon4" # Switch between "K3" or "Falcon4"
 
 # --- Falcon4 Specific Settings ---
 # The source directory containing raw .eer and .eer.mdoc files
-falcon4_source_dir = "/data/Microscopy/titan2/Villa_20250820_100000_SYC"
-falcon4_eer_ngroups = 8
+falcon4_source_dir = "/data/Microscopy/titan2/Villa_20260507_100000_SYC"
+falcon4_eer_ngroups = 16
 
 # --- K3 Specific Settings ---
 k3_frame_num = 8
@@ -38,11 +38,12 @@ k3_frame_num = 8
 # --- Computing Resources ---
 import os
 gpu_devices = [int(x) for x in os.environ.get('CUDA_VISIBLE_DEVICES', '0').split(',')]
-jobs_per_gpu = 1
+jobs_per_gpu = 2
 etomo_cpu_cores = 8
+gapstop_workers = 24
 
 # --- Base Path ---
-base_dir = "/data/workspace/Eva"
+base_dir = "/data/workspace/Siyu/Titan1_Processing"
 
 # --- Warp Pipeline Parameters ---
 pipeline_params = {}
@@ -85,7 +86,7 @@ default_patch_size = 512
 isonet_params = {
     "cube_size": 64,
     "crop_size": 96,
-    "number_subtomos": 2,
+    "number_subtomos": 8,
     "iterations": 30,
     "noise_level": [0.1, 0.15, 0.2, 0.25],
     "noise_start_iter": [10, 15, 20, 25],
@@ -95,24 +96,36 @@ isonet_params = {
     "batch_size": len(gpu_devices)
 }
 
+# --- ISONet2 Settings ---
+isonet2_params = {
+    "cube_size": 96,
+    "density_percentage": 50,
+    "std_percentage": 80,
+    "epochs": 100,
+    "mw_weight": 200,
+    "batch_size": len(gpu_devices),
+    "tilt_min": -54,   # set per dataset
+    "tilt_max": 54,    # set per dataset
+}
+
 # --- Cryolo Settings ---
 cryolo_params = {
     "prep": {
         "enable": True,
-        "star_file": f"{base_dir}/temp_save_spot/relion32_bin4_ribo/Refine3D/ms1c2_mr1/run_data.star",
-        "bin_factor": 0.6916
+        "star_file": f"{base_dir}/251113_HSC_rest/relion32_7p48/Refine3D/ms1c246_mr1/run_data.star",
+        "bin_factor": 1
     },
     "threshold": 0.25,
     "min_connections": 5,
-    "batch_size": len(gpu_devices)
+    "batch_size": len(gpu_devices)*2
 }
 
 # --- 3D template matching Settings ---
 template_matching_params = {
-    # "tomo_angpix": angpix * FINAL_NEWSTACK_BIN,
-    "tomo_angpix": 10,
+    "tomo_angpix": angpix * FINAL_NEWSTACK_BIN,
+    # "tomo_angpix": 10,
     "subdivisions": 3,
-    "template_path": f"{base_dir}/test/20250820_HSC_4hr_CorrectHand/relion32_linux/Refine3D/fc_clean_mr1/run_class001.mrc",
+    "template_path": f"{base_dir}/260401_Janelia_HSC/gapstop/round_1/ini.mrc",
     "template_diameter": 350,
     "peak_distance": 175,
     "symmetry": "C1",
@@ -120,32 +133,48 @@ template_matching_params = {
     "reuse_results": True
 }
 
+# --- gapstop Settings ---
+gapstop_params = {
+    "template": "ini_inv.mrc",
+    "mask": "spherical_rad26_gaus2.mrc",
+    "angle_file": "angles_10_C1.txt",
+    "particle_diameter": 28,
+    "scores_threshold": 0.07,
+    "sigma_threshold": None,
+    "cluster_size": None,
+    "n_particles": None,
+    "symmetry": "c1",
+}
+
 # --- particle export Settings ---
 subtomo_params = {
     "3d": True,
-    "--input_directory": "../temp_save_spot/relion32_bin4_ribo/Refine3D/fc_mr1",
-    "--input_pattern": "run_data_rln3ish_6.916Apx_data.star",
-    "--coords_angpix": "6.916",
-    "--output_star": "relion32_bin2/ribo_fc.star",
-    "--output_angpix": angpix * 2,
-    "--output_processing": "relion32_bin2",
-    "--box": 144,
-    "--diameter": 450
+    "--input_directory": "warp_tiltseries/matching/filtered",
+    "--input_pattern": "*.star",
+    "--coords_angpix": angpix * FINAL_NEWSTACK_BIN,
+    "--output_star": "relion32_bin4/bin4.star",
+    "--output_angpix": angpix * 4,
+    "--output_processing": "relion32_bin4",
+    "--box": 84,
+    "--diameter": 350
 }
 
 # --- m refine Settings ---
 m_refine_params = {
-    "directory": "ribo_2set",
-    "population_name" : "ribo",
-    "relion_folder" : f"{base_dir}/temp_save_spot/relion32_bin2",
-    "input_angpix" : 3.458,
+    "directory": "3p74_to1p87_3set_try2",
+    "population_name" : "3set",
+    "relion_folder" : f"{base_dir}/ribo_relion/relion5_3p74A",
+    "input_angpix" : 3.74,
     "source_names" : [
-        {"dataset": "20240328_A549TNT_EK", "name":"MT_pf13_240328"},
+        {"dataset": "251028_HSC_2d", "name":"m_full_251028"},
+        {"dataset": "251113_HSC_rest", "name":"m_full_251113"},
+        {"dataset": "20250820_HSC_4hr", "name":"m_full_20250820"},
     ],
     "species": [
-        {"name":"P","job":"fc_P_mr1","mask":"fc_P_1_3_6"},
-        {"name":"AP","job":"fc_AP_mr1","mask":"ribo_1p2_3_6"},
-        # {"name":"pf13","job":"pf13_best_mr1_hel","mask":"ini_0p8_3_6"},
-        # {"name":"pf12", "job":"pf12_mr1_hel/","mask":"ini_pf12_0p8_3_6"},
+        {"name":"ribosome", "job":"mr2_global","mask":"ini_2_3_6"},
+        # {"name":"ribosome_eEF2","job":"eEF2_c25_mr1","mask":"eEF2_c2_3_3_6"},
+        # {"name": "ribosome_AT", "job": "AT_c3_mr1", "mask": "AT_c3_3_3_6"},
+        # {"name": "ribosome_AA", "job": "AA_c4_mr1", "mask": "AA_c4_3_3_6"},
+        # {"name": "ribosome_P", "job": "P_c6_mr1", "mask": "P_c6_3_3_6"} 
     ],
 }

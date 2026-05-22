@@ -10,6 +10,19 @@ from pathlib import Path
 from typing import List, Tuple, Iterator, Dict, Optional, Union
 
 import multiprocessing
+import sys
+
+# --- Tomogram List ---
+
+def load_tomo_list(list_file: str = 'ribo_list_final.txt') -> List[str]:
+    """Read tomogram names from the first column of a list file."""
+    path = Path(list_file)
+    if not path.exists():
+        logging.error(f"Tomogram list file not found: {path.resolve()}")
+        sys.exit(1)
+    tomo_list = [line.split()[0] for line in path.read_text().strip().splitlines()]
+    logging.info(f"Found {len(tomo_list)} tomograms in {path.name}.")
+    return tomo_list
 
 # --- Data Reorganization ---
 

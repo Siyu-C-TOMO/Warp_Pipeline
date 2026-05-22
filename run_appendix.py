@@ -4,19 +4,19 @@ import argparse
 import logging
 import sys
 import os
+import re
 from pathlib import Path
 from typing import Dict, List
 
-from matplotlib import lines
-
 sys.path.insert(0, os.getcwd())
 import config as cfg
-from pipeline_utils import run_command, filter_star_file, run_parallel_tasks
+from pipeline_utils import run_command, filter_star_file, run_parallel_tasks, load_tomo_list
 from command_builder import (
     build_m_refine_command,
     build_m_population_command,
     build_reconstruction_command,
     build_isonet_commands,
+    build_isonet2_commands,
     build_cryolo_commands,
     build_template_match_command,
     build_subtomo_extraction_command,
@@ -76,13 +76,8 @@ def reconstruction(log_file_path: Path):
 
 def isonet(log_file_path: Path):
     """Run the ISONet stage of the pipeline."""
-    list_file = Path('ribo_list_final.txt')
-    if not list_file.exists():
-        logging.error(f"tomogram list file does not exist in the current directory: {list_file.resolve()}")
-        sys.exit(1)
-    
-    tomo_list = [line.split()[0] for line in list_file.read_text().strip().splitlines()]
-    logging.info(f"Found {len(tomo_list)} tomograms in the list.")
+    logging.info("Starting ISONet stage...")
+    tomo_list = load_tomo_list()
 
     tomo_folder = "tomoset"
     isonet_dir = Path("isonet")
@@ -91,7 +86,6 @@ def isonet(log_file_path: Path):
     Path(isonet_dir / tomo_folder).mkdir(parents=True, exist_ok=True)
 
     for tomo in tomo_list:
-        # source = Path(f"warp_tiltseries/tiltstack/{tomo}").resolve()
         source = Path("warp_tiltseries/reconstruction/deconv_flip/").resolve()
         target = isonet_dir / tomo_folder / f"{tomo}.mrc"
         source_files = list(source.glob(f"{tomo}*_10.00Apx.mrc"))
@@ -109,6 +103,50 @@ def isonet(log_file_path: Path):
         run_command(cmd, cmd_log_dir / f"step_{i}.log", cwd=isonet_dir, module_load='isonet')
     
     logging.info("--- All ISONet steps completed successfully. ---")
+
+def isonet2(log_file_path: Path):
+    """Run the ISONet2 stage of the pipeline."""
+    logging.info("Starting ISONet2 stage...")
+    tomo_list = load_tomo_list()
+
+    isonet_dir = Path("isonet2")
+    cmd_log_dir = isonet_dir / "logs"
+    for sub in ["even", "odd", "logs"]:
+        (isonet_dir / sub).mkdir(parents=True, exist_ok=True)
+
+    for tomo in tomo_list:
+        for half in ["even", "odd"]:
+            src_dir = Path(f"warp_tiltseries/reconstruction/{half}/")
+            src_files = list(src_dir.glob(f"{tomo}*.mrc"))
+            if not src_files:
+                logging.warning(f"No {half} half-map found for {tomo}")
+                continue
+            dst = isonet_dir / half / src_files[0].name
+            if not dst.exists():
+                dst.symlink_to(src_files[0].resolve())
+
+    defocus_list = []
+    for tomo in sorted(tomo_list):
+        xml_path = Path(f"warp_tiltseries/{tomo}.xml")
+        match = re.search(r'<Param Name="Defocus" Value="([0-9.]+)"',
+                          xml_path.read_text()) if xml_path.exists() else None
+        if match:
+            defocus_list.append(round(float(match.group(1)) * 10000))
+        else:
+            logging.warning(f"Defocus not found for {tomo}, using placeholder 10000")
+            defocus_list.append(10000)
+
+    logging.info(f"Extracted defocus values: {defocus_list}")
+
+    commands = build_isonet2_commands(cfg.isonet2_params, cfg.gpu_devices, defocus_list)
+
+    total_steps = len(commands)
+    for i, cmd in enumerate(commands, 1):
+        logging.info(f"--- Starting ISONet2 step [{i}/{total_steps}]: {cmd.split()[1]} ---")
+        run_command(cmd, cmd_log_dir / f"step_{i}.log",
+                    cwd=isonet_dir, module_load='isonet2/2.0.1b-dev')
+
+    logging.info("--- All ISONet2 steps completed successfully. ---")
 
 def cryolo(log_file_path: Path):
     """Run the Cryolo stage of the pipeline."""
@@ -285,13 +323,7 @@ def template_match_gapstop(log_file_path: Path):
             logging.error(f"Required file not found: {f.resolve()}")
             sys.exit(1)
 
-    list_file = Path('ribo_list_final.txt')
-    if not list_file.exists():
-        logging.error(f"tomogram list file does not exist in the current directory: {list_file.resolve()}")
-        sys.exit(1)
-    
-    tomo_list = [line.split()[0] for line in list_file.read_text().strip().splitlines()]
-    logging.info(f"Found {len(tomo_list)} tomograms in the list.")
+    tomo_list = load_tomo_list()
 
     env = os.environ.copy()
     logging.info(f"--- Starting gapstop 3D template matching ---")
@@ -411,7 +443,7 @@ def m_refinement(log_file_path: Path):
     for i, cmd in enumerate(prep_cmds, 1):
         cmd_name = cmd[0] if isinstance(cmd, list) else cmd.split()[0]
         logging.info(f"--- Starting M population prep step [{i}/{total_steps}]: {cmd_name} ---")
-        run_command(cmd, cmd_log_dir / f"prep_step_{i}.log", cwd=m_dir, env=env, module_load='warp/2.0.0dev36')
+        # run_command(cmd, cmd_log_dir / f"prep_step_{i}.log", cwd=m_dir, env=env, module_load='warp/2.0.0dev36')
 
     refine_cmds = build_m_refine_command(cfg.m_refine_params)
     logging.info("--- Starting M refinement stage ---")
@@ -430,7 +462,7 @@ def main():
     parser.add_argument(
         '--stage',
         type=str,
-        choices=['isonet', 'cryolo', 'reconstruct', '3DTM', 'subtomo', 'm_refine', 'gapstop'],
+        choices=['isonet', 'isonet2', 'cryolo', 'reconstruct', '3DTM', 'subtomo', 'm_refine', 'gapstop'],
         help="Which stage of the pipeline to run."
     )
     parser.add_argument('--input_list', type=str, default=None, help="Override input list file for 3DTM")
@@ -465,6 +497,7 @@ def main():
         stage_map = {
             'reconstruct': reconstruction,
             'isonet': isonet,
+            'isonet2': isonet2,
             'cryolo': cryolo,
             '3DTM': template_match_3D,
             'subtomo': subtomo_extraction,
